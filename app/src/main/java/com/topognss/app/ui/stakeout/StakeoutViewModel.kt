@@ -101,7 +101,7 @@ class StakeoutViewModel(app: Application) : AndroidViewModel(app) {
         selectTarget(next)
     }
 
-    fun setTolerance(t: Double) { tolerance = t; prefs.stakeTolerance = t.toFloat() }
+    fun updateTolerance(t: Double) { tolerance = t; prefs.stakeTolerance = t.toFloat() }
     fun toggleSound() { sound = !sound; prefs.stakeSound = sound }
 
     /** Guarda la posición actual como punto replanteado, con los residuos respecto del objetivo. */

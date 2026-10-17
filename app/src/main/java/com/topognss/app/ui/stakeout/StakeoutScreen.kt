@@ -165,7 +165,7 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically) {
             listOf(0.02, 0.05, 0.10).forEach { tol ->
-                FilterChip(selected = abs(vm.tolerance - tol) < 1e-6, onClick = { vm.setTolerance(tol) },
+                FilterChip(selected = abs(vm.tolerance - tol) < 1e-6, onClick = { vm.updateTolerance(tol) },
                     label = { Text("${(tol * 100).toInt()} cm") })
             }
             TextButton(onClick = { vm.toggleSound() }) { Text(if (vm.sound) "🔊" else "🔇") }
