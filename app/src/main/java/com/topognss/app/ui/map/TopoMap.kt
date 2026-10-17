@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -29,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -292,8 +294,11 @@ fun TopoMap(
         }
     }
 
-    Box(modifier) {
+    // clipToBounds: durante el pinch-zoom osmdroid dibuja teselas escaladas fuera de su recuadro;
+    // sin recorte se superponen con el resto de la pantalla.
+    Box(modifier.clipToBounds()) {
         AndroidView(
+            modifier = Modifier.fillMaxSize().clipToBounds(),
             factory = { mapView },
             update = { mv ->
                 // Capa base (sólo si cambió, para no recargar teselas en cada recomposición)
@@ -368,6 +373,9 @@ private fun LayerSelector(current: MapLayer, onSelect: (MapLayer) -> Unit) {
 }
 
 private fun createMapView(context: Context, overlay: TopoOverlay): MapView = MapView(context).apply {
+    // Recorte también a nivel de View nativa (cubre la animación de zoom con dos dedos)
+    clipToOutline = true
+    outlineProvider = android.view.ViewOutlineProvider.BOUNDS
     setMultiTouchControls(true)
     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
     isTilesScaledToDpi = true
