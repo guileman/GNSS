@@ -33,6 +33,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +57,9 @@ import com.topognss.app.ui.components.PointRow
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
 import com.topognss.app.ui.hold
+import com.topognss.app.ui.map.TopoMap
+import com.topognss.app.ui.map.toMapMe
+import com.topognss.app.ui.map.toMapPoint
 import com.topognss.app.ui.topo
 import kotlinx.coroutines.launch
 import java.io.File
@@ -64,6 +68,7 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = topo.repository
     val project = hold(activeProjectFlow(), null)
     val points = hold(activePointsFlow(), emptyList())
+    val gnss = topo.gnss.state
     var filter by mutableStateOf<PointKind?>(null)
     var message by mutableStateOf<String?>(null)
 
@@ -108,6 +113,8 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsView
     val all by vm.points.collectAsState()
     var detail by remember { mutableStateOf<PointEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    var showMap by rememberSaveable { mutableStateOf(false) }
+    val gnss by vm.gnss.collectAsState()
 
     val p = project
     if (p == null) { NoProjectCard(onOpenProjects); return }
@@ -129,6 +136,8 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsView
                 }) { Text("CSV") }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = showMap, onClick = { showMap = !showMap },
+                    label = { Text(if (showMap) "Ver lista" else "Ver mapa") })
                 FilterChip(selected = vm.filter == null, onClick = { vm.filter = null }, label = { Text("Todos (${all.size})") })
                 PointKind.entries.forEach { k ->
                     val c = all.count { it.kind == k.name }
@@ -136,7 +145,15 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsView
                 }
             }
             vm.message?.let { Text(it, Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.secondary) }
-            LazyColumn(Modifier.weight(1f)) {
+            if (showMap) {
+                TopoMap(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    points = shown.map { it.toMapPoint() },
+                    me = gnss.toMapMe(),
+                    fitKey = vm.filter to shown.size,
+                    onPointTap = { id -> detail = shown.firstOrNull { it.id == id } },
+                )
+            } else LazyColumn(Modifier.weight(1f)) {
                 items(shown, key = { it.id }) { pt ->
                     PointRow(pt, Modifier.clickable { detail = pt })
                     HorizontalDivider()

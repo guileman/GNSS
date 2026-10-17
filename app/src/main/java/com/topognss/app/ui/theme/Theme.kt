@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.topognss.app.gnss.ConnectionStatus
 import com.topognss.app.gnss.GnssState
@@ -52,7 +54,19 @@ private val DarkColors = darkColorScheme(
     surfaceVariant = Color(0xFF263136),
 )
 
+enum class ThemeMode(val label: String) { SYSTEM("Según el sistema"), LIGHT("Claro"), DARK("Oscuro") }
+
+/** true si la interfaz está en modo oscuro (lo usa el mapa para invertir la capa de calles). */
+val LocalDarkTheme = staticCompositionLocalOf { false }
+
 @Composable
-fun TopoTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, content = content)
+fun TopoTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+    val dark = when (mode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    CompositionLocalProvider(LocalDarkTheme provides dark) {
+        MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, content = content)
+    }
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -54,6 +55,8 @@ import com.topognss.app.ui.components.SectionTitle
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
 import com.topognss.app.ui.hold
+import com.topognss.app.ui.map.TopoMap
+import com.topognss.app.ui.map.toMapPoint
 import com.topognss.app.ui.topo
 import kotlinx.coroutines.launch
 
@@ -128,6 +131,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
     val project by vm.project.collectAsState()
     val all by vm.points.collectAsState()
     var tab by rememberSaveable { mutableStateOf(0) }
+    var selectOnMap by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(project?.id) { vm.refreshName() }
 
     val proj = project
@@ -144,10 +148,22 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
                 if (sel.isEmpty()) "Tocá los puntos en orden" else sel.joinToString(" → ") { it.name },
                 Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 2,
             )
+            TextButton(onClick = { selectOnMap = !selectOnMap }) { Text(if (selectOnMap) "Lista" else "Mapa") }
             TextButton(onClick = { vm.clear() }) { Text("Limpiar") }
         }
         // Lista de selección (alto acotado) + resultados abajo
-        OrderedPointSelector(all, vm.selected, vm::toggle, Modifier.fillMaxWidth().heightIn(max = 260.dp))
+        if (selectOnMap) {
+            TopoMap(
+                modifier = Modifier.fillMaxWidth().height(280.dp),
+                points = all.map { p -> p.toMapPoint(order = vm.selected.indexOf(p.id).takeIf { it >= 0 }?.plus(1)) },
+                line = sel.map { it.lat to it.lon },
+                closeLine = tab == 0 && vm.closePolygon && sel.size >= 3,
+                fitKey = proj.id,
+                onPointTap = { id -> vm.toggle(id) },
+            )
+        } else {
+            OrderedPointSelector(all, vm.selected, vm::toggle, Modifier.fillMaxWidth().heightIn(max = 260.dp))
+        }
 
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(12.dp)) {
             if (tab == 0) MeasurementResults(sel, vm, proj.crs().projection.let { tm ->

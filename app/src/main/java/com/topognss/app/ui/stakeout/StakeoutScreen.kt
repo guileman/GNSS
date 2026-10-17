@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +69,9 @@ import com.topognss.app.sensors.fuseHeading
 import com.topognss.app.ui.components.NoProjectCard
 import com.topognss.app.ui.components.PointRow
 import com.topognss.app.ui.components.f
+import com.topognss.app.ui.map.TopoMap
+import com.topognss.app.ui.map.toMapMe
+import com.topognss.app.ui.map.toMapPoint
 import com.topognss.app.ui.theme.FixGreen
 import com.topognss.app.ui.theme.FloatYellow
 import com.topognss.app.ui.theme.SingleRed
@@ -85,6 +90,7 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
     val compass by vm.compass.collectAsState()
     val points by vm.points.collectAsState()
     var picking by remember { mutableStateOf(false) }
+    var mapMode by rememberSaveable { mutableStateOf(false) }
 
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -143,7 +149,28 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
         }
 
         // --- Gráfico: flecha lejos, radar/diana cerca ---
-        Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = !mapMode, onClick = { mapMode = false }, label = { Text("Guía") })
+            FilterChip(selected = mapMode, onClick = { mapMode = true }, label = { Text("Mapa") })
+        }
+        if (mapMode) Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp)) {
+            // Mapa "rumbo arriba" si hay rumbo; si no, norte arriba. Sigue la posición del receptor.
+            TopoMap(
+                modifier = Modifier.fillMaxSize(),
+                points = points.filter { it.id != t?.id }.map { it.toMapPoint() },
+                me = s.toMapMe(),
+                target = t?.toMapPoint()?.copy(color = if (inside) FixGreen else SingleRed),
+                line = if (t != null && s.lat != null && s.lon != null) listOf(s.lat!! to s.lon!!, t.lat to t.lon) else emptyList(),
+                follow = true,
+                rotationDeg = heading.degrees?.takeIf { heading.source != HeadingSource.NONE },
+                fitKey = t?.id,
+            )
+            if (nav != null) {
+                Box(Modifier.align(Alignment.BottomStart).padding(8.dp).size(96.dp)) {
+                    DirectionArrow(angleDeg = (nav.relativeDeg ?: nav.azimuthDeg).toFloat(), color = solutionTint(s.solution.code))
+                }
+            }
+        } else Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
             if (nav != null) {
                 if (nav.distance > 3.0) {
                     // Sin rumbo: flecha orientada al norte de pantalla (azimut absoluto)

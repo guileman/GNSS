@@ -14,6 +14,14 @@ Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para to
 | **Cálculo – Crear puntos** | Punto medio, prolongación sobre alineación (con o sin extrapolar cota) y estación/desplazamiento perpendicular izquierda/derecha. |
 | **Replanteo** | Distancia, "Avanzar/Retroceder" y "Derecha/Izquierda", corte/relleno, flecha que rota según el teléfono y radar de precisión a menos de 3 m. Brújula (vector de rotación + declinación WMM) fusionada con el rumbo GNSS al caminar. Alerta sonora y vibración dentro de la tolerancia (2/5/10 cm). |
 
+## Mapa base y tema
+
+- **Capas** (botón flotante arriba a la derecha del mapa): Calles (OpenStreetMap), Satélite (Esri World Imagery), Híbrido (satélite + rutas y nombres), Topográfico (OpenTopoMap) o Sin mapa. La elección se recuerda.
+- El mapa aparece en **Relevar** (puntos y posición con círculo de precisión HRMS a escala), **Puntos** (botón "Ver mapa", tocar un punto abre su ficha), **Cálculo** (selección de puntos tocándolos en el mapa, con la poligonal dibujada) y **Replanteo** (modo "Mapa": sigue la posición, gira con el rumbo y muestra la línea al objetivo).
+- **Sin conexión**: las teselas vistas se guardan en caché (hasta 600 MB). Antes de ir al campo, recorré la zona de trabajo en el mapa con Internet y la tendrás disponible offline.
+- No requiere clave de API. Las imágenes satelitales son de Esri y su uso está sujeto a sus términos (atribución visible en el mapa).
+- **Tema**: menú ⋮ de la barra superior → Según el sistema / Claro / Oscuro. En oscuro, la capa de calles se muestra invertida para uso nocturno.
+
 ## Sistemas de coordenadas
 
 Cada proyecto define su plano de proyección. La proyección Transversa de Mercator usa las series de Krüger de orden 6 y está verificada contra PROJ (diferencias < 0,1 mm):
@@ -51,6 +59,7 @@ app/src/main/java/com/topognss/app/
 ├── geo/                       Transversa de Mercator, CRS, geodesia local
 ├── cogo/                      Cálculos COGO puros
 ├── sensors/CompassSensor.kt   Brújula y fusión de rumbo
+├── ui/map/                    Mapa osmdroid: capas, overlay topográfico, caché offline
 ├── data/                      Room (proyectos y puntos), repositorio, CSV, preferencias
 └── ui/                        Pantallas Compose + ViewModels
 app/src/test/                  Tests JVM de geodesia, NMEA y COGO

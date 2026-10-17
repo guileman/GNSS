@@ -98,6 +98,22 @@ class AppPrefs(context: Context) {
         _activeProjectId.value = id
     }
 
+    /** Tema de la interfaz: SYSTEM / LIGHT / DARK (nombres de [com.topognss.app.ui.theme.ThemeMode]). */
+    private val _themeMode = MutableStateFlow(sp.getString("theme", "SYSTEM") ?: "SYSTEM")
+    val themeMode: StateFlow<String> = _themeMode
+    fun setThemeMode(mode: String) {
+        sp.edit().putString("theme", mode).apply()
+        _themeMode.value = mode
+    }
+
+    /** Capa de mapa base (nombres de [com.topognss.app.ui.map.MapLayer]). */
+    private val _mapLayer = MutableStateFlow(sp.getString("mapLayer", "STREETS") ?: "STREETS")
+    val mapLayer: StateFlow<String> = _mapLayer
+    fun setMapLayer(layer: String) {
+        sp.edit().putString("mapLayer", layer).apply()
+        _mapLayer.value = layer
+    }
+
     var lastHost: String
         get() = sp.getString("host", "192.168.42.1") ?: "192.168.42.1"
         set(v) = sp.edit().putString("host", v).apply()

@@ -9,6 +9,7 @@ import com.topognss.app.data.AppPrefs
 import com.topognss.app.data.TopoRepository
 import com.topognss.app.gnss.GnssManager
 import com.topognss.app.sensors.CompassSensor
+import com.topognss.app.ui.map.initOsmdroid
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -32,6 +33,7 @@ class TopoApp : Application() {
         repository = TopoRepository(AppDatabase.create(this))
         prefs = AppPrefs(this)
         compass = CompassSensor(this)
+        initOsmdroid(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = NotificationChannel(CHANNEL_GNSS, "Conexión GNSS", NotificationManager.IMPORTANCE_LOW)

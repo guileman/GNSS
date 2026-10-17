@@ -48,6 +48,18 @@ import com.topognss.app.ui.projects.ProjectsScreen
 import com.topognss.app.ui.stakeout.StakeoutScreen
 import com.topognss.app.ui.survey.SurveyScreen
 import com.topognss.app.ui.theme.TopoTheme
+import androidx.activity.SystemBarStyle
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
+import com.topognss.app.ui.theme.LocalDarkTheme
+import com.topognss.app.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 
@@ -65,7 +77,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { TopoTheme { AppRoot(application as TopoApp) } }
+        val app = application as TopoApp
+        setContent {
+            val modeName by app.prefs.themeMode.collectAsState()
+            val mode = runCatching { ThemeMode.valueOf(modeName) }.getOrDefault(ThemeMode.SYSTEM)
+            TopoTheme(mode) {
+                // Iconos de la barra de estado/navegación acordes al tema elegido (no al del sistema)
+                val dark = LocalDarkTheme.current
+                LaunchedEffect(dark) {
+                    val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                }
+                AppRoot(app)
+            }
+        }
     }
 }
 
@@ -105,6 +131,7 @@ private fun AppRoot(app: TopoApp) {
                             Icon(Icons.Filled.LocationOn, contentDescription = null)
                             Text(" Proyectos")
                         }
+                        ThemeMenu(app)
                     },
                 )
                 GnssStatusBar(gnss) { nav.goTab(Dest.CONNECTION) }
@@ -137,6 +164,25 @@ private fun AppRoot(app: TopoApp) {
             composable(Dest.COGO.route) { CogoScreen(onOpenProjects = openProjects) }
             composable(Dest.STAKEOUT.route) { StakeoutScreen(onOpenProjects = openProjects) }
             composable(ROUTE_PROJECTS) { ProjectsScreen(onDone = { nav.goTab(Dest.SURVEY) }) }
+        }
+    }
+}
+
+/** Menú ⋮ con la elección de tema (se guarda en preferencias). */
+@Composable
+private fun ThemeMenu(app: TopoApp) {
+    var open by remember { mutableStateOf(false) }
+    val current by app.prefs.themeMode.collectAsState()
+    Box {
+        IconButton(onClick = { open = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Opciones") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text("Tema", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+            ThemeMode.entries.forEach { m ->
+                DropdownMenuItem(
+                    text = { Text((if (current == m.name) "✓ " else "   ") + m.label) },
+                    onClick = { app.prefs.setThemeMode(m.name); open = false },
+                )
+            }
         }
     }
 }

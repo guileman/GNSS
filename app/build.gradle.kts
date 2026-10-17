@@ -79,6 +79,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
+    // Mapa base (OpenStreetMap / Esri / OpenTopoMap) sin clave de API, con caché offline
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
+
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")

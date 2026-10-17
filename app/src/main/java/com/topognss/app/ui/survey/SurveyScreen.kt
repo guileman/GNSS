@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,6 +60,9 @@ import com.topognss.app.ui.components.SectionTitle
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
 import com.topognss.app.ui.hold
+import com.topognss.app.ui.map.TopoMap
+import com.topognss.app.ui.map.toMapMe
+import com.topognss.app.ui.map.toMapPoint
 import com.topognss.app.ui.theme.FixGreen
 import com.topognss.app.ui.topo
 import kotlinx.coroutines.Job
@@ -223,6 +227,7 @@ fun SurveyScreen(onOpenProjects: () -> Unit, vm: SurveyViewModel = viewModel()) 
     val s by vm.gnss.collectAsState()
     val recent by vm.recent.collectAsState()
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showMap by rememberSaveable { mutableStateOf(true) }
 
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -299,8 +304,21 @@ fun SurveyScreen(onOpenProjects: () -> Unit, vm: SurveyViewModel = viewModel()) 
         }
         vm.message?.let { Text(it, color = if (it.startsWith("✔")) FixGreen else MaterialTheme.colorScheme.error) }
 
-        SectionTitle("Puntos relevados (${recent.size})")
-        LazyColumn(Modifier.weight(1f)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionTitle("Puntos relevados (${recent.size})")
+            Spacer(Modifier.weight(1f))
+            FilterChip(selected = showMap, onClick = { showMap = true }, label = { Text("Mapa") },
+                modifier = Modifier.padding(end = 4.dp))
+            FilterChip(selected = !showMap, onClick = { showMap = false }, label = { Text("Lista") })
+        }
+        if (showMap) {
+            TopoMap(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 4.dp),
+                points = recent.map { it.toMapPoint() },
+                me = s.toMapMe(),
+                fitKey = recent.size,
+            )
+        } else LazyColumn(Modifier.weight(1f)) {
             items(recent, key = { it.id }) { pt ->
                 Column {
                     PointRow(pt)
