@@ -59,7 +59,7 @@ jobs:
       - name: Resumen de errores
         if: failure()
         run: |
-          cat test.log build.log 2>/dev/null | grep -E "^e: |^\* What went wrong|^> |FAILED|error:" | head -60 > errors.txt || true
+          cat test.log build.log 2>/dev/null | grep -v "> Task" | grep -E -A4 "^e: |What went wrong" | grep -v "^--$" | head -40 > errors.txt || true
           while IFS= read -r line; do echo "::error::${line}"; done < errors.txt
           { echo '### Errores'; echo '```'; cat errors.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
