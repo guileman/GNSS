@@ -82,6 +82,9 @@ dependencies {
     // Mapa base (OpenStreetMap / Esri / OpenTopoMap) sin clave de API, con caché offline
     implementation("org.osmdroid:osmdroid-android:6.1.20")
 
+    // Realidad aumentada para el replanteo (tracking visual-inercial; render propio en OpenGL ES)
+    implementation("com.google.ar:core:1.45.0")
+
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
