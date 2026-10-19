@@ -161,7 +161,7 @@ class CompassSensor(private val context: Context) {
  *    más fiable que el magnetómetro (inmune a interferencias de jalón metálico, vehículos, etc.).
  *  - Detenido, el COG es ruido puro → se usa la brújula del teléfono.
  */
-enum class HeadingSource { COMPASS, GNSS_COG, NONE }
+enum class HeadingSource { COMPASS, GNSS_COG, AR, NONE }
 
 data class FusedHeading(val degrees: Float?, val source: HeadingSource)
 

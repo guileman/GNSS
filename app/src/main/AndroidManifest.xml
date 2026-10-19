@@ -23,6 +23,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Replanteo en realidad aumentada (ARCore). Opcional: sin AR la app funciona igual. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+
     <!-- Alertas de proximidad en replanteo -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -40,6 +45,9 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.TopoGNSS"
         tools:targetApi="35">
+
+        <!-- ARCore opcional: Play no exige el dispositivo compatible; se instala a demanda al abrir la vista AR. -->
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
 
         <activity
             android:name=".MainActivity"

@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.topognss.app.ar.ArStakeController
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
 import com.topognss.app.geo.LocalGeodesy
@@ -81,6 +82,21 @@ class StakeoutViewModel(app: Application) : AndroidViewModel(app) {
         null,
     )
     val compassAvailable = topo.compass.isAvailable
+
+    /** Replanteo en realidad aumentada: sesión ARCore + calibración con el RTK. */
+    val ar = ArStakeController(app)
+
+    init {
+        // Cada época del receptor alimenta la calibración AR (sólo actúa con la cámara AR abierta).
+        viewModelScope.launch {
+            topo.gnss.epochs.collect { e -> ar.onEpoch(e, prefs.antennaHeight.toDouble()) }
+        }
+    }
+
+    override fun onCleared() {
+        ar.close()
+        super.onCleared()
+    }
 
     var headingMode by mutableStateOf(HeadingMode.AUTO)
     var tolerance by mutableStateOf(prefs.stakeTolerance.toDouble())

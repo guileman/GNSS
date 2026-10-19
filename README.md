@@ -12,7 +12,7 @@ Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para to
 | **Puntos** | Lista por tipo (relevado, COGO, a replantear, replanteado), edición, alta manual por coordenadas, exportación CSV. |
 | **Cálculo – Medición** | Distancia horizontal, desnivel, distancia inclinada, pendiente, azimut (DMS), ángulos y deflexiones en vértices, superficie (Gauss) y perímetro. Informa el factor de escala local. |
 | **Cálculo – Crear puntos** | Punto medio, prolongación sobre alineación (con o sin extrapolar cota) y estación/desplazamiento perpendicular izquierda/derecha. |
-| **Replanteo** | Distancia, "Avanzar/Retroceder" y "Derecha/Izquierda", corte/relleno, flecha que rota según el teléfono y radar de precisión a menos de 3 m. Brújula (vector de rotación + declinación WMM) fusionada con el rumbo GNSS al caminar. Alerta sonora y vibración dentro de la tolerancia (2/5/10 cm). |
+| **Replanteo** | Distancia, "Avanzar/Retroceder" y "Derecha/Izquierda", corte/relleno, flecha que rota según el teléfono y radar de precisión a menos de 3 m. Brújula (vector de rotación + declinación WMM) fusionada con el rumbo GNSS al caminar. Alerta sonora y vibración dentro de la tolerancia (2/5/10 cm). Modo **AR**: el mojón se dibuja sobre la cámara y a menos de 1 m pasa al radar 2D. |
 
 ## Mapa base y tema
 
@@ -21,6 +21,20 @@ Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para to
 - **Sin conexión**: las teselas vistas se guardan en caché (hasta 600 MB). Antes de ir al campo, recorré la zona de trabajo en el mapa con Internet y la tendrás disponible offline.
 - No requiere clave de API. Las imágenes satelitales son de Esri y su uso está sujeto a sus términos (atribución visible en el mapa).
 - **Tema**: menú ⋮ de la barra superior → Según el sistema / Claro / Oscuro. En oscuro, la capa de calles se muestra invertida para uso nocturno.
+
+## Replanteo en realidad aumentada (modo AR)
+
+En **Replanteo → AR** la cámara muestra el entorno y sobre él se dibuja el mojón (estaca naranja con anillo verde en el piso y una baliza alta para ubicarlo de lejos), con su nombre, distancia y corte/relleno. Unas flechas azules en el piso marcan el camino. Si el punto queda fuera de cuadro, una flecha en el borde indica hacia dónde girar. **A menos de 1 m pasa automáticamente a la vista 2D** (radar de precisión, como Emlid Flow) y vuelve a AR recién a más de 1,5 m, para que no parpadee en el umbral.
+
+**Cómo se calibra.** ARCore rastrea el teléfono en un marco propio (vertical correcto, pero orientación y origen arbitrarios). La app empareja cada época RTK con la posición de la cámara en ese mismo instante y ajusta por mínimos cuadrados la rotación y la traslación entre ambos marcos:
+
+1. Con solución **FIX**, caminá **6 a 10 m en línea recta** apuntando la cámara al piso o al entorno. La barra superior muestra el progreso.
+2. Cuando aparece **AR ✓** el mojón queda ubicado. La calibración se sigue refinando mientras caminás (ventana deslizante con más peso a lo reciente, para compensar la deriva del tracking ~1 % de lo recorrido) y se rehace sola si ARCore salta.
+3. Con la calibración lista, el rumbo del radar 2D sale de la cámara AR (más estable que la brújula y sin interferencias del jalón).
+
+**Precisión.** En AR el mojón queda a unos 10–30 cm de su posición: depende del rumbo calibrado, de la distancia y de dónde lleves el teléfono respecto de la antena (conviene llevarlo pegado al jalón). Por eso el centimétrico final se hace siempre en la vista 2D, que usa sólo el RTK. La altura del mojón se apoya en el piso detectado por ARCore y se corrige con el desnivel GNSS hasta la cota del punto; si todavía no detectó el piso se asume el teléfono a 1,4 m.
+
+**Requisitos.** Teléfono compatible con ARCore y la app "Servicios de Google Play para RA" (la app la pide la primera vez). Necesita luz y algo de textura en la escena: sobre asfalto liso o de noche el tracking puede fallar.
 
 ## Sistemas de coordenadas
 
@@ -58,6 +72,7 @@ app/src/main/java/com/topognss/app/
 │   └── GnssService.kt         Servicio en primer plano
 ├── geo/                       Transversa de Mercator, CRS, geodesia local
 ├── cogo/                      Cálculos COGO puros
+├── ar/                        Replanteo AR: calibración AR↔RTK (pura, testeada), sesión ARCore y render OpenGL
 ├── sensors/CompassSensor.kt   Brújula y fusión de rumbo
 ├── ui/map/                    Mapa osmdroid: capas, overlay topográfico, caché offline
 ├── data/                      Room (proyectos y puntos), repositorio, CSV, preferencias

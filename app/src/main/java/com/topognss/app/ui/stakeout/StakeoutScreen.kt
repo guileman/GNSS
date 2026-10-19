@@ -90,7 +90,10 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
     val compass by vm.compass.collectAsState()
     val points by vm.points.collectAsState()
     var picking by remember { mutableStateOf(false) }
-    var mapMode by rememberSaveable { mutableStateOf(false) }
+    var viewMode by rememberSaveable { mutableStateOf(StakeViewMode.GUIDE) }
+    val arUi by vm.ar.ui.collectAsState()
+    // Histéresis del cambio AR → 2D: entra a menos de 1,0 m y vuelve a AR recién a más de 1,5 m.
+    val arNear = remember { booleanArrayOf(false) }
 
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -100,7 +103,10 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
 
     if (project == null) { NoProjectCard(onOpenProjects); return }
 
-    val heading = fuseHeading(vm.headingMode, compass, s.speedMs, s.courseDeg)
+    // En modo AR calibrado, el rumbo sale del tracking visual (mucho más estable que la brújula).
+    val arHeading = arUi.headingDeg?.takeIf { viewMode == StakeViewMode.AR && arUi.alignment.ready && arUi.trackingOk }
+    val heading = if (arHeading != null) FusedHeading(arHeading.toFloat(), HeadingSource.AR)
+    else fuseHeading(vm.headingMode, compass, s.speedMs, s.courseDeg)
     val t = target
     val nav = t?.let { computeNav(s, it, heading.degrees, vm.prefs.antennaHeight.toDouble()) }
     val inside = nav != null && nav.distance <= vm.tolerance
@@ -150,10 +156,23 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
 
         // --- Gráfico: flecha lejos, radar/diana cerca ---
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(selected = !mapMode, onClick = { mapMode = false }, label = { Text("Guía") })
-            FilterChip(selected = mapMode, onClick = { mapMode = true }, label = { Text("Mapa") })
+            StakeViewMode.entries.forEach { m ->
+                FilterChip(selected = viewMode == m, onClick = { viewMode = m }, label = { Text(m.label) })
+            }
         }
-        if (mapMode) Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp)) {
+        if (viewMode == StakeViewMode.AR) Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp)) {
+            if (nav != null) {
+                if (!arNear[0] && nav.distance < AR_TO_2D_M) arNear[0] = true
+                else if (arNear[0] && nav.distance > AR_BACK_M) arNear[0] = false
+            }
+            // La cámara AR sigue corriendo debajo de la vista 2D para no perder el tracking ni el rumbo.
+            ArStakeView(vm.ar, targetName = t?.name, nav = nav, modifier = Modifier.fillMaxSize())
+            if (nav != null && arNear[0]) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+                    Radar(nav, heading, vm.tolerance)
+                }
+            }
+        } else if (viewMode == StakeViewMode.MAP) Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp)) {
             // Mapa "rumbo arriba" si hay rumbo; si no, norte arriba. Sigue la posición del receptor.
             TopoMap(
                 modifier = Modifier.fillMaxSize(),
@@ -182,7 +201,7 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
         }
 
         // --- Rumbo / sensores ---
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (viewMode != StakeViewMode.AR) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             HeadingMode.entries.forEach { m ->
                 FilterChip(selected = vm.headingMode == m, onClick = { vm.headingMode = m }, label = { Text(m.label) })
             }
@@ -218,6 +237,13 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
     }
 }
 
+/** Modos de la pantalla de replanteo. */
+enum class StakeViewMode(val label: String) { GUIDE("Guía"), MAP("Mapa"), AR("AR") }
+
+/** Distancia a la que la vista AR pasa al radar 2D de precisión, y a la que vuelve (histéresis). */
+private const val AR_TO_2D_M = 1.0
+private const val AR_BACK_M = 1.5
+
 private fun distanceText(d: Double): String = when {
     d < 10 -> "${d.f(3)} m"
     d < 1000 -> "${d.f(2)} m"
@@ -243,6 +269,7 @@ private fun HeadingInfo(h: FusedHeading, declination: Float?, accuracy: Int?, co
     val src = when (h.source) {
         HeadingSource.COMPASS -> "brújula"
         HeadingSource.GNSS_COG -> "rumbo GNSS (en movimiento)"
+        HeadingSource.AR -> "cámara AR"
         HeadingSource.NONE -> "norte arriba"
     }
     val parts = mutableListOf("Rumbo ${(h.degrees?.toDouble()).f(0)}° ($src)")
