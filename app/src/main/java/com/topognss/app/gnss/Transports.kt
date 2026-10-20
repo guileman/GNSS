@@ -24,7 +24,15 @@ interface GnssTransport {
     val label: String
     @Throws(IOException::class)
     fun run(onConnected: () -> Unit, onLine: (String) -> Unit)
+
+    /** Cierre definitivo (el usuario desconectó): desbloquea el hilo lector y no se vuelve a usar. */
     fun close()
+
+    /**
+     * Cierra sólo el intento actual tras un error, dejando el transporte listo para reintentar.
+     * Por defecto equivale a [close] (los transportes de red no guardan estado entre intentos).
+     */
+    fun closeAttempt() = close()
 }
 
 /**
@@ -121,6 +129,15 @@ class BluetoothSppTransport(
     override fun close() {
         closed = true
         runCatching { socket?.close() } // desbloquea el read() del hilo lector
+    }
+
+    /**
+     * Tras un error se cierra el socket pero NO se marca como cancelado: antes se llamaba a [close]
+     * y todos los reintentos siguientes fallaban al instante con "Cancelado", sin volver a conectar.
+     */
+    override fun closeAttempt() {
+        runCatching { socket?.close() }
+        socket = null
     }
 
     companion object {

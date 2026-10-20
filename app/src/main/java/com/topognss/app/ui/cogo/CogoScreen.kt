@@ -116,7 +116,15 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
         val proj = project.value ?: return@launch
         val p = preview(sel).getOrElse { message = it.message; return@launch }
         val name = newName.trim().ifEmpty { repo.nextName(proj.id, "C") }
-        val note = "${method.label} de ${sel[0].name}→${sel[1].name}"
+        val note = "${method.label} de ${sel[0].name}→${sel[1].name}" + when (method) {
+            CreateMethod.MIDPOINT -> ""
+            CreateMethod.EXTEND -> ": ${parseNum(distance).f(3)} m desde ${sel[1].name}"
+            CreateMethod.OFFSET -> {
+                val o = parseNum(offset.ifBlank { "0" }) ?: 0.0
+                ": est. ${parseNum(station).f(3)} m, desp. ${kotlin.math.abs(o).f(3)} m" +
+                    if (o == 0.0) "" else if (offsetRight) " D" else " I"
+            }
+        }
         runCatching { repo.insertPlane(proj, name, newCode.trim(), p, PointKind.COGO, note) }
             .onSuccess { message = "✔ $name creado"; newName = repo.nextName(proj.id, "C") }
             .onFailure { message = "Error: ${it.message} (¿nombre repetido?)" }
@@ -201,6 +209,24 @@ private fun MeasurementResults(sel: List<PointEntity>, vm: CogoViewModel, scale:
         }
     }
     if (sel.size >= 3) {
+        // Control de alineación: cuánto se aparta cada punto intermedio de la recta primero→último.
+        val first = pts.first(); val last = pts.last()
+        if (Cogo.horizontalDistance(first, last) > 1e-6) {
+            SectionTitle("Alineación respecto de ${sel.first().name} → ${sel.last().name}")
+            for (i in 1 until pts.size - 1) {
+                val (st, off) = Cogo.inverseStationOffset(first, last, pts[i])
+                val side = when {
+                    kotlin.math.abs(off) < 0.0005 -> "sobre la línea"
+                    off > 0 -> "a la derecha"
+                    else -> "a la izquierda"
+                }
+                KeyValue(sel[i].name, "est. ${st.f(3)} m · desvío ${(kotlin.math.abs(off) * 100).f(1)} cm $side")
+            }
+            Text(
+                "Desvío = distancia perpendicular a la recta, mirando del primero al último punto seleccionado.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = vm.closePolygon, onCheckedChange = { vm.closePolygon = it })
             Text("  Polígono cerrado")
@@ -261,6 +287,14 @@ private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(selected = !vm.offsetRight, onClick = { vm.offsetRight = false }, label = { Text("◀ Izquierda") })
                 FilterChip(selected = vm.offsetRight, onClick = { vm.offsetRight = true }, label = { Text("Derecha ▶") })
+            }
+            val o = parseNum(vm.offset.ifBlank { "0" })
+            if (o != null && o != 0.0) {
+                Text(
+                    "⚠ Con desplazamiento ${kotlin.math.abs(o).f(3)} m ${if (vm.offsetRight) "a la derecha" else "a la izquierda"} " +
+                        "el punto queda FUERA de la línea $a→$b, sobre una paralela. Para un punto sobre la línea, dejalo en 0.",
+                    color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }

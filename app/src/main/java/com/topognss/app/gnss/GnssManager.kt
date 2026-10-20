@@ -61,7 +61,7 @@ class GnssManager {
                     if (transport !== t) break // desconexión pedida por el usuario
                     publishConnection(ConnectionStatus.ERROR, t.label, e.message ?: e.javaClass.simpleName)
                 }
-                t.close()
+                t.closeAttempt() // cierra el intento fallido; close() es sólo para la desconexión del usuario
                 if (transport !== t) break
                 delay(backoff)
                 backoff = (backoff * 2).coerceAtMost(8000L)
