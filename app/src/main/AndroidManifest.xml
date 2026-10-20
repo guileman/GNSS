@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <!-- Android 12+: conectar con dispositivos ya emparejados -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Android 12+: buscar receptores cercanos para emparejarlos desde la app (no se usa para ubicación) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
 
     <!-- Ubicación (requerida por Bluetooth en Android ≤ 11 y para declinación/escaneos) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

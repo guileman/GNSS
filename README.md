@@ -6,7 +6,7 @@ Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para to
 
 | Módulo | Qué hace |
 |---|---|
-| **GNSS** | Conexión por Bluetooth SPP (RFCOMM), TCP cliente, TCP servidor o UDP. Reconexión automática, servicio en primer plano, consola NMEA y contadores de tramas. |
+| **GNSS** | Conexión por **Bluetooth** (SPP/RFCOMM, con búsqueda y emparejamiento desde la app) o **Wi-Fi** (receptor como servidor TCP con búsqueda automática en la red, teléfono como servidor TCP, o UDP). Reconexión automática, servicio en primer plano, consola NMEA y contadores de tramas. |
 | **Barra de estado** | Persistente en todas las pantallas: solución (verde FIX, amarillo FLOAT, naranja DGPS, rojo SINGLE/sin datos), satélites, HRMS, VRMS, PDOP, edad de corrección y batería (si el receptor la informa). |
 | **Relevar** | Promedio de 1/5/10/30 épocas con filtros (exigir FIX, HRMS/VRMS máximos), nombre autoincremental (P001, P002…), código/descripción, altura de antena, lista en vivo. Guarda σ combinando GST y dispersión real. |
 | **Puntos** | Lista por tipo (relevado, COGO, a replantear, replanteado), edición, alta manual por coordenadas, exportación CSV. |
@@ -36,9 +36,9 @@ Cada proyecto define su plano de proyección. La proyección Transversa de Merca
 
 1. **Settings → Position output → Output 1**.
 2. Elegí el canal:
-   - **Bluetooth**: emparejá antes el teléfono desde los ajustes de Android.
-   - **TCP** (rol servidor): con el hotspot del receptor la IP es `192.168.42.1`; usá el puerto que configures en Flow.
-   - **TCP cliente / UDP**: cargá en Flow la IP del teléfono (la app la muestra) y el puerto.
+   - **Bluetooth**: en la app, GNSS → Bluetooth → **Buscar dispositivos** y tocá el receptor para emparejarlo (o emparejalo desde los ajustes de Android). Después **tocá el receptor en la lista de emparejados para conectar**.
+   - **Wi-Fi, receptor servidor (recomendado)**: en Flow, salida TCP con rol servidor y un puerto (p. ej. 9001). Conectá el teléfono al hotspot del receptor (IP `192.168.42.1`, contraseña por defecto `emlidreach`) o a la misma red Wi-Fi. En la app, GNSS → Wi-Fi → **Buscar receptor** lo encuentra solo; tocalo para conectar.
+   - **Wi-Fi, teléfono servidor / UDP**: cargá en Flow la IP del teléfono (la app la muestra) y el puerto.
 3. Formato **NMEA**, con al menos **GGA, GST, GSA y RMC**. Sin GST la app no puede mostrar HRMS/VRMS.
 4. La batería del RS2 no viaja por NMEA estándar, por eso la barra muestra "N/D". El parser deja un punto de extensión para tramas propietarias (`$P…BAT…`).
 
