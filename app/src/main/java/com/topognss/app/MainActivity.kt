@@ -43,6 +43,7 @@ import androidx.navigation.compose.rememberNavController
 import com.topognss.app.ui.cogo.CogoScreen
 import com.topognss.app.ui.components.GnssStatusBar
 import com.topognss.app.ui.connection.ConnectionScreen
+import com.topognss.app.ui.plumb.PlumbScreen
 import com.topognss.app.ui.points.PointsScreen
 import com.topognss.app.ui.projects.ProjectsScreen
 import com.topognss.app.ui.stakeout.StakeoutScreen
@@ -72,6 +73,7 @@ private enum class Dest(val route: String, val label: String, val icon: ImageVec
 }
 
 private const val ROUTE_PROJECTS = "projects"
+private const val ROUTE_PLUMB = "plumb"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,7 +133,7 @@ private fun AppRoot(app: TopoApp) {
                             Icon(Icons.Filled.LocationOn, contentDescription = null)
                             Text(" Proyectos")
                         }
-                        ThemeMenu(app)
+                        OverflowMenu(app, onOpenPlumb = { nav.navigate(ROUTE_PLUMB) { launchSingleTop = true } })
                     },
                 )
                 GnssStatusBar(gnss) { nav.goTab(Dest.CONNECTION) }
@@ -164,18 +166,23 @@ private fun AppRoot(app: TopoApp) {
             composable(Dest.COGO.route) { CogoScreen(onOpenProjects = openProjects) }
             composable(Dest.STAKEOUT.route) { StakeoutScreen(onOpenProjects = openProjects) }
             composable(ROUTE_PROJECTS) { ProjectsScreen(onDone = { nav.goTab(Dest.SURVEY) }) }
+            composable(ROUTE_PLUMB) { PlumbScreen() }
         }
     }
 }
 
-/** Menú ⋮ con la elección de tema (se guarda en preferencias). */
+/** Menú ⋮: elección de tema (se guarda en preferencias) y accesos a herramientas secundarias. */
 @Composable
-private fun ThemeMenu(app: TopoApp) {
+private fun OverflowMenu(app: TopoApp, onOpenPlumb: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val current by app.prefs.themeMode.collectAsState()
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Opciones") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Plomada virtual") },
+                onClick = { open = false; onOpenPlumb() },
+            )
             Text("Tema", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
             ThemeMode.entries.forEach { m ->
                 DropdownMenuItem(
