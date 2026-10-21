@@ -2,12 +2,18 @@ package com.topognss.app.ui.stakeout
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.topognss.app.cogo.AlignmentFix
+import com.topognss.app.cogo.P3
+import com.topognss.app.cogo.nearestOnPolyline
+import com.topognss.app.cogo.polylineLength
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
+import com.topognss.app.data.crs
 import com.topognss.app.geo.LocalGeodesy
 import com.topognss.app.gnss.ConnectionStatus
 import com.topognss.app.gnss.GnssState
@@ -86,6 +92,61 @@ class StakeoutViewModel(app: Application) : AndroidViewModel(app) {
     var tolerance by mutableStateOf(prefs.stakeTolerance.toDouble())
     var sound by mutableStateOf(prefs.stakeSound)
     var message by mutableStateOf<String?>(null)
+
+    // --- Replanteo de ejes/alineaciones ---
+    var alignmentMode by mutableStateOf(false)
+    val alignmentSelected = mutableStateListOf<Long>()
+
+    fun toggleAlignmentPoint(id: Long) { if (!alignmentSelected.remove(id)) alignmentSelected.add(id) }
+    fun clearAlignment() = alignmentSelected.clear()
+
+    /** Posición actual (E,N) del receptor en el plano del proyecto, o null si no hay fix/proyecto. */
+    fun currentPlaneXY(s: GnssState): P3? {
+        val proj = project.value ?: return null
+        val lat = s.lat ?: return null
+        val lon = s.lon ?: return null
+        val xy = proj.crs().projection.forward(lat, lon)
+        return P3(xy.east, xy.north)
+    }
+
+    /** Estación/desvío respecto del eje elegido (lista ordenada de puntos), o null si falta algo. */
+    fun alignmentFix(all: List<PointEntity>, s: GnssState): AlignmentFix? {
+        val path = alignmentSelected.mapNotNull { id -> all.firstOrNull { it.id == id } }
+        if (path.size < 2) return null
+        val here = currentPlaneXY(s) ?: return null
+        return nearestOnPolyline(path.map { P3(it.easting, it.northing, it.elevation) }, here)
+    }
+
+    fun alignmentLength(all: List<PointEntity>): Double {
+        val path = alignmentSelected.mapNotNull { id -> all.firstOrNull { it.id == id } }
+        if (path.size < 2) return 0.0
+        return polylineLength(path.map { P3(it.easting, it.northing, it.elevation) })
+    }
+
+    /** Guarda la posición actual como punto replanteado sobre el eje, con la estación y el desvío. */
+    fun recordAlignment(all: List<PointEntity>, s: GnssState) {
+        val proj = project.value ?: return
+        val fix = alignmentFix(all, s) ?: run { message = "Sin posición o eje incompleto"; return }
+        if (s.lat == null || s.lon == null) { message = "Sin posición"; return }
+        viewModelScope.launch {
+            var name = "EJE_${fix.station.toInt()}"
+            var i = 2
+            while (repo.nameExists(proj.id, name)) name = "EJE_${fix.station.toInt()}_${i++}"
+            val pt = PointEntity(
+                projectId = proj.id, name = name, code = "", kind = PointKind.STAKED.name,
+                lat = s.lat, lon = s.lon, easting = 0.0, northing = 0.0,
+                elevation = s.altitudeMsl?.minus(prefs.antennaHeight.toDouble()),
+                ellipsoidalHeight = s.ellipsoidalHeight?.minus(prefs.antennaHeight.toDouble()),
+                hrms = s.hrms, vrms = s.vrms, pdop = s.pdop, satellites = s.satellites,
+                solution = s.solution.label, epochs = 1,
+                note = "Replanteo de eje: estación ${fix.station.f(3)} m, desvío ${fix.offset.f(3)} m " +
+                    "(${if (fix.offset >= 0) "derecha" else "izquierda"})",
+            )
+            runCatching { repo.insertGeographic(proj, pt) }
+                .onSuccess { message = "✔ Registrado $name (est. ${fix.station.f(2)} m)" }
+                .onFailure { message = "Error: ${it.message}" }
+        }
+    }
 
     fun selectTarget(p: PointEntity) {
         topo.stakeTarget.value = p.id
