@@ -26,6 +26,9 @@ class TopoRepository(private val db: AppDatabase) {
     suspend fun deletePoint(p: PointEntity) = points.delete(p)
     suspend fun updatePoint(p: PointEntity) = points.update(p)
 
+    /** Guarda (o borra, con null) la ruta de la foto georreferenciada de un punto. */
+    suspend fun setPhoto(p: PointEntity, path: String?) = points.update(p.copy(photoPath = path))
+
     /**
      * Próximo nombre libre con prefijo: P001, P002… Busca el mayor sufijo numérico existente.
      * Si el usuario escribió "B7", el siguiente será "B8" (respeta el ancho de dígitos).
