@@ -2,6 +2,8 @@
 
 Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para topografía con receptores GNSS RTK que emiten NMEA, pensada y probada en diseño para **Emlid Reach RS2 / RS2+ / RS3**. Funciona 100 % offline.
 
+📖 **[Guía de uso de todas las funciones, con diagramas](docs/ayuda/README.md)**
+
 ## Funciones
 
 | Módulo | Qué hace |
