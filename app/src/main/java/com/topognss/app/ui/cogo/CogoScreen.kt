@@ -39,8 +39,17 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import com.topognss.app.cogo.Cogo
 import com.topognss.app.cogo.P3
+import com.topognss.app.cogo.TraverseLeg
+import com.topognss.app.cogo.adjustTraverse
 import com.topognss.app.cogo.formatDms
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
@@ -84,6 +93,61 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
     var newName by mutableStateOf("")
     var newCode by mutableStateOf("")
     var message by mutableStateOf<String?>(null)
+
+    // --- Poligonal con ajuste (Bowditch) ---
+    val legAzimuth = mutableStateListOf("")
+    val legDistance = mutableStateListOf("")
+    val legName = mutableStateListOf("")
+    var traverseClosedLoop by mutableStateOf(true)
+    var traverseMessage by mutableStateOf<String?>(null)
+
+    init {
+        addLeg(); addLeg()
+    }
+
+    fun addLeg() {
+        legAzimuth.add(""); legDistance.add(""); legName.add("V${legAzimuth.size}")
+    }
+
+    fun removeLeg(i: Int) {
+        if (legAzimuth.size <= 1) return
+        legAzimuth.removeAt(i); legDistance.removeAt(i); legName.removeAt(i)
+    }
+
+    /** Punto de partida = primer punto seleccionado; punto de cierre = segundo, o el mismo si [traverseClosedLoop]. */
+    fun traverseResult(sel: List<PointEntity>): Result<com.topognss.app.cogo.TraverseAdjustment> = runCatching {
+        require(sel.isNotEmpty()) { "Seleccioná el punto de partida conocido" }
+        val start = sel[0].toP3()
+        val known = when {
+            sel.size >= 2 -> sel[1].toP3()
+            traverseClosedLoop -> start
+            else -> error("Seleccioná también el punto de cierre, o activá \"cierra en el mismo punto\"")
+        }
+        val legs = legAzimuth.indices.map { i ->
+            val az = parseNum(legAzimuth[i]) ?: error("Tramo ${i + 1}: falta el azimut")
+            val d = parseNum(legDistance[i]) ?: error("Tramo ${i + 1}: falta la distancia")
+            require(d > 0) { "Tramo ${i + 1}: la distancia debe ser positiva" }
+            TraverseLeg(legName[i].ifBlank { "V${i + 1}" }, az, d)
+        }
+        adjustTraverse(start, legs, known)
+    }
+
+    fun saveTraverse(sel: List<PointEntity>) = viewModelScope.launch {
+        val proj = project.value ?: return@launch
+        val res = traverseResult(sel).getOrElse { traverseMessage = it.message; return@launch }
+        var ok = 0
+        for (v in res.vertices) {
+            val name = v.name.trim().ifEmpty { repo.nextName(proj.id, "V") }
+            val note = "Poligonal ajustada (Bowditch) desde ${sel[0].name}, cierre ${res.closureLinear.f(3)} m"
+            runCatching { repo.insertPlane(proj, name, "", v.adjusted, PointKind.COGO, note) }.onSuccess { ok++ }
+        }
+        traverseMessage = if (ok == res.vertices.size) {
+            val prec = if (res.precisionDenominator.isInfinite()) "∞" else "1 : ${res.precisionDenominator.toLong()}"
+            "✔ $ok vértices creados · precisión $prec"
+        } else {
+            "Se crearon $ok de ${res.vertices.size} vértices (¿nombres repetidos?)"
+        }
+    }
 
     fun toggle(id: Long) { if (!selected.remove(id)) selected.add(id) }
     fun clear() = selected.clear()
@@ -142,6 +206,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Medición") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Crear puntos") })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Poligonal") })
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -166,10 +231,11 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
         }
 
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(12.dp)) {
-            if (tab == 0) MeasurementResults(sel, vm, proj.crs().projection.let { tm ->
-                sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
-            })
-            else CreatePanel(sel, vm)
+            if (tab == 0) {
+                MeasurementResults(sel, vm, proj.crs().projection.let { tm ->
+                    sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
+                })
+            } else if (tab == 1) CreatePanel(sel, vm) else TraversePanel(sel, vm)
         }
     }
 }
@@ -282,4 +348,78 @@ private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
         Text("Crear punto")
     }
     vm.message?.let { Text(it, modifier = Modifier.padding(top = 4.dp)) }
+}
+
+/**
+ * Poligonal con ajuste por mínimos cuadrados (regla de Bowditch/compás).
+ *
+ * El punto de partida es el 1er punto seleccionado (conocido). Los tramos se ingresan
+ * manualmente como azimut + distancia (p. ej. tomados con estación total u otro instrumento).
+ * El cierre es el 2do punto seleccionado, o el mismo punto de partida si la poligonal es cerrada.
+ */
+@Composable
+private fun TraversePanel(sel: List<PointEntity>, vm: CogoViewModel) {
+    val start = sel.getOrNull(0)?.name
+    val known = sel.getOrNull(1)?.name
+    SectionTitle("Puntos de control")
+    Text(
+        when {
+            start == null -> "Seleccioná el punto de partida conocido (y, opcionalmente, el de cierre)."
+            known != null -> "Partida: $start   ·   Cierre: $known"
+            vm.traverseClosedLoop -> "Partida y cierre: $start (poligonal cerrada)"
+            else -> "Partida: $start   ·   falta el punto de cierre"
+        },
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (known == null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = vm.traverseClosedLoop, onCheckedChange = { vm.traverseClosedLoop = it })
+            Text("  Cierra en el mismo punto de partida")
+        }
+    }
+
+    SectionTitle("Tramos observados (azimut + distancia)")
+    vm.legAzimuth.indices.forEach { i ->
+        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                vm.legName[i], { vm.legName[i] = it }, label = { Text("Nombre") },
+                singleLine = true, modifier = Modifier.weight(0.8f),
+            )
+            Spacer(Modifier.width(4.dp))
+            NumberField(vm.legAzimuth[i], { vm.legAzimuth[i] = it }, "Azimut", Modifier.weight(1f), "°")
+            Spacer(Modifier.width(4.dp))
+            NumberField(vm.legDistance[i], { vm.legDistance[i] = it }, "Distancia", Modifier.weight(1f), "m")
+            IconButton(onClick = { vm.removeLeg(i) }, enabled = vm.legAzimuth.size > 1) {
+                Icon(Icons.Filled.Close, contentDescription = "Quitar tramo")
+            }
+        }
+    }
+    TextButton(onClick = { vm.addLeg() }) {
+        Icon(Icons.Filled.Add, contentDescription = null)
+        Text(" Agregar tramo")
+    }
+
+    val res = vm.traverseResult(sel)
+    Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Column(Modifier.padding(10.dp)) {
+            res.onSuccess { adj ->
+                Text("Error de cierre", style = MaterialTheme.typography.titleSmall)
+                KeyValue("ΔE / ΔN", "${adj.closureE.f(3)} m / ${adj.closureN.f(3)} m")
+                KeyValue("Cierre lineal", adj.closureLinear.f(4) + " m")
+                KeyValue("Perímetro", adj.perimeter.f(3) + " m")
+                KeyValue(
+                    "Precisión",
+                    if (adj.precisionDenominator.isInfinite()) "exacto" else "1 : ${adj.precisionDenominator.toLong()}",
+                )
+                SectionTitle("Vértices ajustados")
+                adj.vertices.forEach { v ->
+                    KeyValue(v.name, "E ${v.adjusted.e.f(3)}  N ${v.adjusted.n.f(3)}")
+                }
+            }.onFailure { Text(it.message ?: "Datos incompletos", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+    Button(onClick = { vm.saveTraverse(sel) }, enabled = res.isSuccess, modifier = Modifier.fillMaxWidth()) {
+        Text("Crear vértices ajustados")
+    }
+    vm.traverseMessage?.let { Text(it, modifier = Modifier.padding(top = 4.dp)) }
 }
