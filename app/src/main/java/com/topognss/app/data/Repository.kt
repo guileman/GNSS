@@ -123,6 +123,10 @@ class AppPrefs(context: Context) {
     var lastMode: String
         get() = sp.getString("mode", "BLUETOOTH") ?: "BLUETOOTH"
         set(v) = sp.edit().putString("mode", v).apply()
+    /** Modo de transporte Wi-Fi (nombres de [com.topognss.app.gnss.WifiRole]). */
+    var wifiRole: String?
+        get() = sp.getString("wifiRole", null)
+        set(v) = sp.edit().putString("wifiRole", v).apply()
     var lastBtAddress: String?
         get() = sp.getString("bt", null)
         set(v) = sp.edit().putString("bt", v).apply()
