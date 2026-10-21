@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 260" font-family="sans-serif">
+  <style>
+    .pt { fill: #0E7C86; }
+    .lbl { font-size: 13px; fill: #222; }
+    .leg { font-size: 12px; fill: #555; }
+    .axis { stroke: #0E7C86; stroke-width: 2.5; fill: none; }
+    .perp { stroke: #D7263D; stroke-width: 1.5; stroke-dasharray: 3 3; }
+  </style>
+  <rect width="520" height="260" fill="#ffffff"/>
+  <text x="20" y="26" font-size="16" font-weight="bold">Replanteo de eje / alineación</text>
+
+  <!-- alignment polyline -->
+  <polyline points="60,200 200,160 340,180 460,100" class="axis"/>
+  <circle cx="60" cy="200" r="5" class="pt"/>
+  <text x="40" y="220" class="lbl">P1</text>
+  <circle cx="200" cy="160" r="5" class="pt"/>
+  <text x="190" y="145" class="lbl">P2</text>
+  <circle cx="340" cy="180" r="5" class="pt"/>
+  <text x="330" y="200" class="lbl">P3</text>
+  <circle cx="460" cy="100" r="5" class="pt"/>
+  <text x="450" y="85" class="lbl">P4</text>
+
+  <!-- current position off to the side -->
+  <circle cx="275" cy="140" r="5" fill="#D7263D"/>
+  <text x="280" y="135" class="lbl">posición actual</text>
+  <!-- perpendicular projection onto the nearest segment -->
+  <line x1="275" y1="140" x2="283" y2="172" class="perp"/>
+  <circle cx="283" cy="172" r="3" fill="#D7263D"/>
+  <text x="200" y="245" class="leg">Estación = distancia acumulada desde P1 hasta el pie de la perpendicular</text>
+  <text x="200" y="230" class="leg">Desvío = distancia (+der / −izq) a ese pie de perpendicular</text>
+</svg>

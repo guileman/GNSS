@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 320" width="520" height="320" font-family="sans-serif">
+  <style>
+    .pt { fill: #0E7C86; }
+    .ptAdj { fill: #D7263D; }
+    .lbl { font-size: 13px; fill: #222; }
+    .leg { font-size: 12px; fill: #555; }
+    .raw { stroke: #999; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; }
+    .adj { stroke: #0E7C86; stroke-width: 2.5; fill: none; }
+  </style>
+  <rect width="520" height="320" fill="#ffffff"/>
+  <text x="20" y="26" class="lbl" font-size="16" font-weight="bold">Poligonal: ajuste por compás (Bowditch)</text>
+
+  <!-- known end point -->
+  <circle cx="440" cy="60" r="5" class="ptAdj"/>
+  <text x="450" y="58" class="lbl">Punto conocido (cierre)</text>
+
+  <!-- raw (unadjusted) path with drift -->
+  <polyline points="60,260 150,190 230,150 320,110 410,80" class="raw"/>
+  <text x="330" y="100" class="leg">provisorio (azimut+distancia)</text>
+
+  <!-- adjusted path, corrected to close exactly on known end -->
+  <polyline points="60,260 148,185 228,142 318,100 440,60" class="adj"/>
+  <text x="150" y="230" class="leg">ajustado (error distribuido según distancia acumulada)</text>
+
+  <!-- vertices -->
+  <circle cx="60" cy="260" r="5" class="pt"/>
+  <text x="20" y="280" class="lbl">Inicio</text>
+  <circle cx="148" cy="185" r="5" class="pt"/>
+  <circle cx="228" cy="142" r="5" class="pt"/>
+  <circle cx="318" cy="100" r="5" class="pt"/>
+
+  <!-- closure error arrow -->
+  <line x1="410" y1="80" x2="440" y2="60" stroke="#D7263D" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="400" y="100" class="leg" fill="#D7263D">error de cierre</text>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#D7263D"/>
+    </marker>
+  </defs>
+</svg>
