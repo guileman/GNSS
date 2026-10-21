@@ -2,6 +2,10 @@ package com.topognss.app.ui.points
 
 import android.app.Application
 import android.content.Intent
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -11,24 +15,30 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +47,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -80,6 +93,18 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun stake(p: PointEntity) { topo.stakeTarget.value = p.id }
+
+    /** Crea un archivo nuevo en el almacenamiento propio de la app para la foto de [p], y su Uri de FileProvider. */
+    fun newPhotoFile(p: PointEntity): File {
+        val dir = File(topo.filesDir, "photos").apply { mkdirs() }
+        return File(dir, "${p.id}_${System.currentTimeMillis()}.jpg")
+    }
+
+    fun setPhoto(p: PointEntity, path: String?) = viewModelScope.launch {
+        // Si había una foto anterior distinta, se borra para no acumular archivos huérfanos.
+        if (p.photoPath != null && p.photoPath != path) runCatching { File(p.photoPath).delete() }
+        runCatching { repo.setPhoto(p, path) }
+    }
 
     /** Alta manual de un punto a replantear (por coordenadas planas del proyecto). */
     fun addManual(name: String, code: String, e: Double, n: Double, h: Double?) = viewModelScope.launch {
@@ -167,12 +192,16 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsView
     }
 
     detail?.let { pt ->
+        // Siempre la versión más actualizada del punto (p. ej. después de guardar la foto).
+        val live = all.firstOrNull { it.id == pt.id } ?: pt
         PointDetailDialog(
-            pt,
+            live,
             onDismiss = { detail = null },
-            onStake = { vm.stake(pt); detail = null; onStake() },
-            onDelete = { vm.delete(pt); detail = null },
-            onRename = { n, c -> vm.rename(pt, n, c); detail = null },
+            onStake = { vm.stake(live); detail = null; onStake() },
+            onDelete = { vm.delete(live); detail = null },
+            onRename = { n, c -> vm.rename(live, n, c); detail = null },
+            onNewPhotoFile = { vm.newPhotoFile(live) },
+            onPhotoResult = { path -> vm.setPhoto(live, path) },
         )
     }
     if (showAdd) {
@@ -189,10 +218,19 @@ private fun PointDetailDialog(
     onStake: () -> Unit,
     onDelete: () -> Unit,
     onRename: (String, String) -> Unit,
+    onNewPhotoFile: () -> File,
+    onPhotoResult: (String?) -> Unit,
 ) {
     var name by remember { mutableStateOf(p.name) }
     var code by remember { mutableStateOf(p.code) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var pendingFile by remember { mutableStateOf<File?>(null) }
+    val context = LocalContext.current
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val f = pendingFile
+        if (success && f != null) onPhotoResult(f.absolutePath) else f?.delete()
+        pendingFile = null
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Punto ${p.name}") },
@@ -200,6 +238,16 @@ private fun PointDetailDialog(
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true)
                 OutlinedTextField(code, { code = it }, label = { Text("Código") }, singleLine = true)
+                PointPhotoRow(
+                    photoPath = p.photoPath,
+                    onTakePhoto = {
+                        val f = onNewPhotoFile()
+                        pendingFile = f
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
+                        takePicture.launch(uri)
+                    },
+                    onRemovePhoto = { onPhotoResult(null) },
+                )
                 KeyValue("Este", p.easting.f(4))
                 KeyValue("Norte", p.northing.f(4))
                 KeyValue("Cota", p.elevation.f(4))
@@ -221,6 +269,35 @@ private fun PointDetailDialog(
         confirmButton = { TextButton(onClick = onStake) { Text("Replantear") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
     )
+}
+
+/** Miniatura de la foto georreferenciada del punto (si tiene) + botones para tomar/quitar foto. */
+@Composable
+private fun PointPhotoRow(photoPath: String?, onTakePhoto: () -> Unit, onRemovePhoto: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (photoPath != null) {
+            PointPhotoThumbnail(photoPath, Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)))
+            IconButton(onClick = onRemovePhoto) { Icon(Icons.Filled.Close, contentDescription = "Quitar foto") }
+        } else {
+            Text("Sin foto", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+        }
+        IconButton(onClick = onTakePhoto) { Icon(Icons.Filled.CameraAlt, contentDescription = "Tomar foto") }
+    }
+}
+
+/** Decodifica el archivo de la foto a una miniatura pequeña (evita cargar la imagen entera en memoria). */
+@Composable
+private fun PointPhotoThumbnail(path: String, modifier: Modifier = Modifier) {
+    var bitmap by remember(path) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(path) {
+        bitmap = runCatching {
+            val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
+            BitmapFactory.decodeFile(path, opts)
+        }.getOrNull()
+    }
+    bitmap?.let { bmp ->
+        Image(bmp.asImageBitmap(), contentDescription = "Foto del punto", modifier = modifier, contentScale = ContentScale.Crop)
+    }
 }
 
 @Composable
