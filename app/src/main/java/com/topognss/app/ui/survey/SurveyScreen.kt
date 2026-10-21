@@ -2,6 +2,7 @@ package com.topognss.app.ui.survey
 
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,8 +10,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.List as ListIcon
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -18,13 +31,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -53,10 +66,12 @@ import com.topognss.app.gnss.Epoch
 import com.topognss.app.gnss.SolutionType
 import com.topognss.app.ui.activePointsFlow
 import com.topognss.app.ui.activeProjectFlow
+import com.topognss.app.ui.components.CollapsibleCard
+import com.topognss.app.ui.components.FramedBlock
 import com.topognss.app.ui.components.NoProjectCard
 import com.topognss.app.ui.components.NumberField
+import com.topognss.app.ui.components.PlayBeepOnTick
 import com.topognss.app.ui.components.PointRow
-import com.topognss.app.ui.components.SectionTitle
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
 import com.topognss.app.ui.hold
@@ -94,6 +109,8 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     var progress by mutableStateOf<MeasureProgress?>(null)
     var message by mutableStateOf<String?>(null)
     var lastSaved by mutableStateOf<PointEntity?>(null)
+    /** Se incrementa cada vez que se guarda un punto; la UI lo usa para emitir el sonido de aviso. */
+    var savedTick by mutableStateOf(0)
     private var job: Job? = null
 
     fun refreshName(p: ProjectEntity?) {
@@ -163,6 +180,7 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
                     lastSaved = pt.copy(id = it)
                     message = "✔ $pointName guardado (${list.size} ép., σH ${pt.hrms.f(3)} m)"
                     name = repo.nextName(p.id, prefs.surveyPrefix.ifEmpty { "P" })
+                    savedTick++
                 }
                 .onFailure { message = "Error al guardar: ${it.message}" }
         }
@@ -226,7 +244,6 @@ fun SurveyScreen(onOpenProjects: () -> Unit, vm: SurveyViewModel = viewModel()) 
     val project by vm.project.collectAsState()
     val s by vm.gnss.collectAsState()
     val recent by vm.recent.collectAsState()
-    var showSettings by rememberSaveable { mutableStateOf(false) }
     var showMap by rememberSaveable { mutableStateOf(true) }
 
     val view = LocalView.current
@@ -239,48 +256,43 @@ fun SurveyScreen(onOpenProjects: () -> Unit, vm: SurveyViewModel = viewModel()) 
     val p = project
     if (p == null) { NoProjectCard(onOpenProjects); return }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        // Posición actual en el sistema del proyecto
-        Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Column(Modifier.padding(12.dp)) {
-                val xy = if (s.lat != null && s.lon != null) p.crs().projection.forward(s.lat!!, s.lon!!) else null
-                Text(p.crs().describe(), style = MaterialTheme.typography.labelSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Coord("E", (xy?.east).f(3))
-                    Coord("N", (xy?.north).f(3))
-                    Coord("H", (s.altitudeMsl?.minus(parseNum(vm.antennaHeight) ?: 0.0)).f(3))
+    PlayBeepOnTick(vm.savedTick)
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Posición actual en el sistema del proyecto (compacta)
+        FramedBlock {
+            val xy = if (s.lat != null && s.lon != null) p.crs().projection.forward(s.lat!!, s.lon!!) else null
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Coord("E", (xy?.east).f(3))
+                Coord("N", (xy?.north).f(3))
+                Coord("H", (s.altitudeMsl?.minus(parseNum(vm.antennaHeight) ?: 0.0)).f(3))
+            }
+        }
+
+        // Punto a medir: nombre/código, épocas y filtros, todo colapsado
+        CollapsibleCard(
+            title = "Punto a medir",
+            icon = Icons.Filled.Tune,
+            summary = "${vm.name.ifBlank { "—" }} · ${vm.epochs} ép.",
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(vm.code, { vm.code = it }, label = { Text("Código") }, singleLine = true, modifier = Modifier.weight(1f))
+            }
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(1, 5, 10, 30).forEach { n ->
+                    FilterChip(selected = vm.epochs == n, onClick = { vm.epochs = n }, label = { Text("$n") })
                 }
             }
-        }
-
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Épocas:", Modifier.padding(end = 6.dp))
-            listOf(1, 5, 10, 30).forEach { n ->
-                FilterChip(selected = vm.epochs == n, onClick = { vm.epochs = n }, label = { Text("$n") },
-                    modifier = Modifier.padding(end = 4.dp))
-            }
-            TextButton(onClick = { showSettings = !showSettings }) { Text(if (showSettings) "Ocultar" else "Filtros") }
-        }
-        if (showSettings) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
                 NumberField(vm.maxHrms, { vm.maxHrms = it }, "HRMS máx", Modifier.weight(1f), "m")
                 NumberField(vm.maxVrms, { vm.maxVrms = it }, "VRMS máx", Modifier.weight(1f), "m")
-                NumberField(vm.antennaHeight, { vm.antennaHeight = it }, "Alt. antena", Modifier.weight(1f), "m")
+                NumberField(vm.antennaHeight, { vm.antennaHeight = it }, "Ant.", Modifier.weight(1f), "m")
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(checked = vm.requireFix, onCheckedChange = { vm.requireFix = it })
-                Text("  Exigir solución FIX", Modifier.weight(1f))
-                OutlinedButton(onClick = { vm.saveSettings(); showSettings = false }) { Text("Guardar") }
+            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.GpsFixed, contentDescription = null, modifier = Modifier.size(16.dp))
+                Switch(checked = vm.requireFix, onCheckedChange = { vm.requireFix = it; vm.saveSettings() })
             }
-            Text(
-                "Altura de antena: se resta a la cota recibida. Ponela en 0 si ya la configuraste en el receptor.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-            OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.weight(1f))
-            OutlinedTextField(vm.code, { vm.code = it }, label = { Text("Código / descripción") }, singleLine = true, modifier = Modifier.weight(1.4f))
         }
 
         val prog = vm.progress
@@ -290,30 +302,37 @@ fun SurveyScreen(onOpenProjects: () -> Unit, vm: SurveyViewModel = viewModel()) 
                 onClick = { vm.measure() },
                 enabled = ready,
                 colors = ButtonDefaults.buttonColors(containerColor = if (s.solution == SolutionType.FIX) FixGreen else MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(64.dp),
-            ) { Text(if (ready) "MEDIR PUNTO" else "Sin posición", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (ready) "MEDIR" else "Sin posición", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
         } else {
-            Card(Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Midiendo ${prog.accepted}/${prog.target} épocas · rechazadas ${prog.rejected}", fontWeight = FontWeight.Bold)
-                    LinearProgressIndicator(progress = { prog.accepted / prog.target.toFloat() }, modifier = Modifier.fillMaxWidth())
-                    prog.lastReason?.let { Text("Último rechazo: $it", style = MaterialTheme.typography.bodySmall) }
-                    OutlinedButton(onClick = { vm.cancel() }) { Text("Cancelar") }
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${prog.accepted}/${prog.target} · rechazadas ${prog.rejected}", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        LinearProgressIndicator(progress = { prog.accepted / prog.target.toFloat() }, modifier = Modifier.fillMaxWidth())
+                    }
+                    IconButton(onClick = { vm.cancel() }) { Icon(Icons.Filled.Close, contentDescription = "Cancelar") }
                 }
             }
         }
-        vm.message?.let { Text(it, color = if (it.startsWith("✔")) FixGreen else MaterialTheme.colorScheme.error) }
+        vm.message?.let { Text(it, fontSize = 12.sp, color = if (it.startsWith("✔")) FixGreen else MaterialTheme.colorScheme.error) }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            SectionTitle("Puntos relevados (${recent.size})")
+            Icon(Icons.Filled.Flag, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(" ${recent.size}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
-            FilterChip(selected = showMap, onClick = { showMap = true }, label = { Text("Mapa") },
-                modifier = Modifier.padding(end = 4.dp))
-            FilterChip(selected = !showMap, onClick = { showMap = false }, label = { Text("Lista") })
+            IconButton(onClick = { showMap = true }) { Icon(Icons.Filled.Map, contentDescription = "Mapa", tint = if (showMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+            IconButton(onClick = { showMap = false }) { Icon(ListIcon, contentDescription = "Lista", tint = if (!showMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
+        // El mapa domina el espacio restante de la pantalla.
         if (showMap) {
             TopoMap(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 4.dp),
+                modifier = Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(14.dp)),
                 points = recent.map { it.toMapPoint() },
                 me = s.toMapMe(),
                 fitKey = recent.size,

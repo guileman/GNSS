@@ -1,5 +1,10 @@
 package com.topognss.app.ui.components
 
+import android.media.AudioManager
+import android.media.ToneGenerator
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,22 +22,37 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.GpsNotFixed
+import androidx.compose.material.icons.filled.GpsOff
+import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -44,6 +64,7 @@ import com.topognss.app.data.PointKind
 import com.topognss.app.data.pointKind
 import com.topognss.app.gnss.ConnectionStatus
 import com.topognss.app.gnss.GnssState
+import com.topognss.app.gnss.SolutionType
 import com.topognss.app.ui.theme.FixGreen
 import com.topognss.app.ui.theme.solutionColor
 import kotlinx.coroutines.delay
@@ -68,61 +89,138 @@ fun rememberNow(periodMs: Long = 1000): Long {
     return now
 }
 
+private fun shortLabel(s: GnssState, stale: Boolean): String = when {
+    s.connection == ConnectionStatus.CONNECTING -> "CONECTANDO"
+    s.connection == ConnectionStatus.ERROR -> "ERROR"
+    s.connection != ConnectionStatus.CONNECTED -> "SIN CONEXIÓN"
+    stale -> "SIN DATOS"
+    else -> s.solution.label
+}
+
+private fun statusIcon(s: GnssState, stale: Boolean): ImageVector = when {
+    s.connection != ConnectionStatus.CONNECTED -> Icons.Filled.GpsOff
+    s.connection == ConnectionStatus.ERROR -> Icons.Filled.SyncProblem
+    stale -> Icons.Filled.GpsNotFixed
+    s.solution == SolutionType.FIX -> Icons.Filled.GpsFixed
+    else -> Icons.Filled.GpsNotFixed
+}
+
 /**
- * Barra de estado GNSS persistente (se muestra arriba en todas las pantallas).
+ * Barra de estado GNSS persistente (ícono + estado nada más; el detalle vive en GNSS).
  * Verde = FIX, amarillo = FLOAT, naranja = DGPS, rojo = SINGLE / sin datos / desconectado.
+ * Emite un sonido corto cada vez que cambia de categoría de estado.
  */
 @Composable
 fun GnssStatusBar(s: GnssState, onClick: () -> Unit) {
     val now = rememberNow()
     val stale = s.connection == ConnectionStatus.CONNECTED && s.isStale(now)
     val color = solutionColor(s, stale)
-    val label = when {
-        s.connection == ConnectionStatus.CONNECTING -> "CONECTANDO…"
-        s.connection == ConnectionStatus.ERROR -> "ERROR · reintentando"
-        s.connection != ConnectionStatus.CONNECTED -> "DESCONECTADO"
-        stale -> "SIN DATOS"
-        else -> s.solution.label
-    }
+    val label = shortLabel(s, stale)
+
+    BeepOnChange(label)
+
     Row(
         Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            Modifier
-                .background(color, RoundedCornerShape(6.dp))
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-        ) {
-            Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        }
+        Icon(statusIcon(s, stale), contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        Text(label, color = color, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.weight(1f))
         if (s.connection == ConnectionStatus.CONNECTED && !stale) {
-            Metric("SAT", s.satellites?.toString() ?: "—")
-            Metric("H", s.hrms.f(3))
-            Metric("V", s.vrms.f(3))
-            Metric("PDOP", s.pdop.f(1))
-            s.diffAge?.let { Metric("AGE", it.f(0) + "s") }
-            Spacer(Modifier.weight(1f))
-            Metric("BAT", s.batteryPercent?.let { "$it%" } ?: "N/D")
-        } else {
-            Text(
-                s.errorMessage ?: s.connectionLabel.ifEmpty { "Tocar para conectar" },
-                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            Icon(Icons.Filled.GpsFixed, contentDescription = "Satélites", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+            Text(s.satellites?.toString() ?: "—", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
 
+/**
+ * Tono corto de alerta cada vez que [key] cambia (no en la primera composición).
+ * Se usa para avisar cambios de estado de conexión/solución sin tener que mirar la pantalla.
+ */
 @Composable
-private fun Metric(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+fun BeepOnChange(key: String, risingIsGood: Boolean = true) {
+    val context = LocalContext.current
+    val tone = remember { runCatching { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80) }.getOrNull() }
+    DisposableEffect(Unit) { onDispose { tone?.release() } }
+    var prev by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(key) {
+        val p = prev
+        if (p != null && p != key) {
+            val good = key == "FIX" || key.startsWith("✔")
+            tone?.startTone(if (good) ToneGenerator.TONE_PROP_ACK else ToneGenerator.TONE_PROP_NACK, 150)
+        }
+        prev = key
     }
+}
+
+/** Reproduce un tono cada vez que [tick] avanza (p. ej. un contador que se incrementa al terminar algo). */
+@Composable
+fun PlayBeepOnTick(tick: Int) {
+    var first by remember { mutableStateOf(true) }
+    LaunchedEffect(tick) {
+        if (first) { first = false; return@LaunchedEffect }
+        runCatching {
+            val t = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+            t.startTone(ToneGenerator.TONE_PROP_BEEP2, 200)
+            delay(220)
+            t.release()
+        }
+    }
+}
+
+/**
+ * Bloque colapsable con marco redondeado: para agrupar ajustes/filtros fuera del flujo principal.
+ */
+@Composable
+fun CollapsibleCard(
+    title: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    initiallyExpanded: Boolean = false,
+    summary: String? = null,
+    content: @Composable () -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
+    Card(
+        modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                if (!expanded && summary != null) {
+                    Text(summary, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null, modifier = Modifier.size(18.dp))
+            }
+            AnimatedVisibility(expanded) {
+                Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) { content() }
+            }
+        }
+    }
+}
+
+/** Marco redondeado simple para delimitar un bloque siempre visible (sin colapsar). */
+@Composable
+fun FramedBlock(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Card(
+        modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) { Column(Modifier.padding(10.dp)) { content() } }
 }
 
 @Composable
