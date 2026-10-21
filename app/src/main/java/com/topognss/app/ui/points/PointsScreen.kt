@@ -2,6 +2,8 @@ package com.topognss.app.ui.points
 
 import android.app.Application
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +50,12 @@ import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
 import com.topognss.app.data.TopoRepository
 import com.topognss.app.data.crs
+import com.topognss.app.importer.ImportFormat
+import com.topognss.app.importer.detectFormat
+import com.topognss.app.importer.parseDxf
+import com.topognss.app.importer.parseKml
+import com.topognss.app.importer.queryDisplayName
+import com.topognss.app.importer.readImportableText
 import com.topognss.app.ui.activePointsFlow
 import com.topognss.app.ui.activeProjectFlow
 import com.topognss.app.ui.components.KeyValue
@@ -89,6 +97,35 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { message = "Error: ${it.message}" }
     }
 
+    /** Importa puntos desde un DXF (planas) o un KML/KMZ (geográficas), uno por vértice. */
+    fun importFile(uri: android.net.Uri, fileName: String?) = viewModelScope.launch {
+        val proj = project.value ?: return@launch
+        val format = detectFormat(fileName)
+        if (format == null) { message = "Formato no soportado: usá un archivo .dxf, .kml o .kmz"; return@launch }
+        val text = runCatching { readImportableText(topo, uri, fileName) }.getOrNull()
+        if (text.isNullOrBlank()) { message = "No se pudo leer el archivo"; return@launch }
+
+        var count = 0
+        when (format) {
+            ImportFormat.DXF -> for (v in parseDxf(text)) {
+                val name = repo.nextName(proj.id, "IMP")
+                runCatching {
+                    repo.insertPlane(proj, name, "", v.p, PointKind.COGO, note = "Importado de ${fileName ?: "DXF"}")
+                }.onSuccess { count++ }
+            }
+            ImportFormat.KML -> for (v in parseKml(text)) {
+                val name = repo.nextName(proj.id, "IMP")
+                val base = PointEntity(
+                    projectId = proj.id, name = name, code = "", kind = PointKind.COGO.name,
+                    lat = v.lat, lon = v.lon, easting = 0.0, northing = 0.0, elevation = v.alt,
+                    note = "Importado de ${fileName ?: "KML"}",
+                )
+                runCatching { repo.insertGeographic(proj, base) }.onSuccess { count++ }
+            }
+        }
+        message = if (count > 0) "Se importaron $count puntos (prefijo IMP)" else "No se encontraron puntos para importar en el archivo"
+    }
+
     fun exportCsv(): Intent? {
         val proj = project.value ?: return null
         val dir = File(topo.cacheDir, "export").apply { mkdirs() }
@@ -115,6 +152,9 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsView
     var showAdd by remember { mutableStateOf(false) }
     var showMap by rememberSaveable { mutableStateOf(false) }
     val gnss by vm.gnss.collectAsState()
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { vm.importFile(it, queryDisplayName(context, it)) }
+    }
 
     val p = project
     if (p == null) { NoProjectCard(onOpenProjects); return }
@@ -131,6 +171,7 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsView
                     Text(p.crs().describe(), style = MaterialTheme.typography.bodySmall)
                 }
                 TextButton(onClick = onOpenProjects) { Text("Proyectos") }
+                OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) { Text("Importar") }
                 OutlinedButton(onClick = {
                     vm.exportCsv()?.let { context.startActivity(Intent.createChooser(it, "Exportar CSV")) }
                 }) { Text("CSV") }
