@@ -48,6 +48,7 @@ import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
 import com.topognss.app.data.TopoRepository
 import com.topognss.app.data.crs
+import com.topognss.app.report.buildStakeoutPdf
 import com.topognss.app.ui.activePointsFlow
 import com.topognss.app.ui.activeProjectFlow
 import com.topognss.app.ui.components.KeyValue
@@ -103,6 +104,19 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
+
+    /** Reporte PDF de replanteo (puntos "Replanteado" con sus residuos). */
+    fun exportStakeoutPdf(): Intent? {
+        val proj = project.value ?: return null
+        val file = buildStakeoutPdf(topo, proj, points.value)
+        val uri = FileProvider.getUriForFile(topo, "${topo.packageName}.fileprovider", file)
+        return Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Reporte de replanteo ${proj.name}")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -134,6 +148,9 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsView
                 OutlinedButton(onClick = {
                     vm.exportCsv()?.let { context.startActivity(Intent.createChooser(it, "Exportar CSV")) }
                 }) { Text("CSV") }
+                OutlinedButton(onClick = {
+                    vm.exportStakeoutPdf()?.let { context.startActivity(Intent.createChooser(it, "Reporte de replanteo")) }
+                }) { Text("PDF") }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(selected = showMap, onClick = { showMap = !showMap },
