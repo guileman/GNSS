@@ -11,7 +11,8 @@ Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para to
 | **Relevar** | Promedio de 1/5/10/30 épocas con filtros (exigir FIX, HRMS/VRMS máximos), nombre autoincremental (P001, P002…), código/descripción, altura de antena, lista en vivo. Guarda σ combinando GST y dispersión real. |
 | **Puntos** | Lista por tipo (relevado, COGO, a replantear, replanteado), edición, alta manual por coordenadas, exportación CSV. |
 | **Cálculo – Medición** | Distancia horizontal, desnivel, distancia inclinada, pendiente, azimut (DMS), ángulos y deflexiones en vértices, superficie (Gauss) y perímetro. Informa el factor de escala local. |
-| **Cálculo – Crear puntos** | Punto medio, prolongación sobre alineación (con o sin extrapolar cota) y estación/desplazamiento perpendicular izquierda/derecha. |
+| **Cálculo – Crear puntos** | Punto medio, prolongación sobre alineación (con o sin extrapolar cota), estación/desplazamiento perpendicular izquierda/derecha, intersección directa por azimuts (dos visuales que se cruzan) e intersección por distancias (trilateración, con elección de lado). |
+| **Cálculo – Resección** | "Estación libre" por el método de Tienstra: con 3 puntos conocidos y los 2 ángulos horizontales medidos entre ellos desde la estación (sin necesidad de medir distancias), calcula la posición de la estación. |
 | **Replanteo** | Distancia, "Avanzar/Retroceder" y "Derecha/Izquierda", corte/relleno, flecha que rota según el teléfono y radar de precisión a menos de 3 m. Brújula (vector de rotación + declinación WMM) fusionada con el rumbo GNSS al caminar. Alerta sonora y vibración dentro de la tolerancia (2/5/10 cm). |
 
 ## Mapa base y tema

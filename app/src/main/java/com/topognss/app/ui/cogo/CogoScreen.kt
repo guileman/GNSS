@@ -42,6 +42,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.topognss.app.cogo.Cogo
 import com.topognss.app.cogo.P3
 import com.topognss.app.cogo.formatDms
+import com.topognss.app.cogo.intersectionByAzimuths
+import com.topognss.app.cogo.intersectionByDistances
+import com.topognss.app.cogo.resectionTienstra
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
 import com.topognss.app.data.crs
@@ -64,6 +67,8 @@ enum class CreateMethod(val label: String) {
     MIDPOINT("Punto medio"),
     EXTEND("Prolongación"),
     OFFSET("Estación / desplazamiento"),
+    INTERSECTION_AZ("Intersección (azimuts)"),
+    INTERSECTION_DIST("Intersección (distancias)"),
 }
 
 class CogoViewModel(app: Application) : AndroidViewModel(app) {
@@ -84,6 +89,37 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
     var newName by mutableStateOf("")
     var newCode by mutableStateOf("")
     var message by mutableStateOf<String?>(null)
+
+    // --- Intersección por azimuts / por distancias ---
+    var azimuthFromA by mutableStateOf("")
+    var azimuthFromB by mutableStateOf("")
+    var distFromA by mutableStateOf("")
+    var distFromB by mutableStateOf("")
+    var intersectionRight by mutableStateOf(true)
+
+    // --- Resección de 3 puntos (Tienstra) ---
+    var angleP1P2 by mutableStateOf("")
+    var angleP2P3 by mutableStateOf("")
+    var resectionName by mutableStateOf("")
+    var resectionMessage by mutableStateOf<String?>(null)
+
+    fun resectionResult(sel: List<PointEntity>): Result<P3> = runCatching {
+        require(sel.size >= 3) { "Seleccioná los 3 puntos conocidos, en el orden en que los observás girando el instrumento en sentido horario" }
+        val a1 = parseNum(angleP1P2) ?: error("Ingresá el ángulo P1–P–P2")
+        val a2 = parseNum(angleP2P3) ?: error("Ingresá el ángulo P2–P–P3")
+        resectionTienstra(sel[0].toP3(), sel[1].toP3(), sel[2].toP3(), a1, a2)
+            ?: error("Configuración inválida (¿ángulos mal medidos o punto sobre el círculo de los 3 conocidos?)")
+    }
+
+    fun createResection(sel: List<PointEntity>) = viewModelScope.launch {
+        val proj = project.value ?: return@launch
+        val p = resectionResult(sel).getOrElse { resectionMessage = it.message; return@launch }
+        val name = resectionName.trim().ifEmpty { repo.nextName(proj.id, "C") }
+        val note = "Resección (Tienstra) desde ${sel[0].name}, ${sel[1].name}, ${sel[2].name}"
+        runCatching { repo.insertPlane(proj, name, "", p, PointKind.COGO, note) }
+            .onSuccess { resectionMessage = "✔ $name creado"; resectionName = repo.nextName(proj.id, "C") }
+            .onFailure { resectionMessage = "Error: ${it.message} (¿nombre repetido?)" }
+    }
 
     fun toggle(id: Long) { if (!selected.remove(id)) selected.add(id) }
     fun clear() = selected.clear()
@@ -108,6 +144,17 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
                 val s = parseNum(station) ?: error("Ingresá la estación (distancia desde A)")
                 val o = parseNum(offset.ifBlank { "0" }) ?: error("Desplazamiento inválido")
                 Cogo.stationOffset(a, b, s, if (offsetRight) o else -o)
+            }
+            CreateMethod.INTERSECTION_AZ -> {
+                val az1 = parseNum(azimuthFromA) ?: error("Ingresá el azimut observado desde $a")
+                val az2 = parseNum(azimuthFromB) ?: error("Ingresá el azimut observado desde $b")
+                intersectionByAzimuths(a, az1, b, az2) ?: error("Las visuales son paralelas: no se cruzan")
+            }
+            CreateMethod.INTERSECTION_DIST -> {
+                val d1 = parseNum(distFromA) ?: error("Ingresá la distancia desde $a")
+                val d2 = parseNum(distFromB) ?: error("Ingresá la distancia desde $b")
+                intersectionByDistances(a, d1, b, d2, intersectionRight)
+                    ?: error("Las distancias no son compatibles con la base $a-$b")
             }
         }
     }
@@ -142,6 +189,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Medición") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Crear puntos") })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Resección") })
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -166,10 +214,11 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
         }
 
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(12.dp)) {
-            if (tab == 0) MeasurementResults(sel, vm, proj.crs().projection.let { tm ->
-                sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
-            })
-            else CreatePanel(sel, vm)
+            if (tab == 0) {
+                MeasurementResults(sel, vm, proj.crs().projection.let { tm ->
+                    sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
+                })
+            } else if (tab == 1) CreatePanel(sel, vm) else ResectionPanel(sel, vm)
         }
     }
 }
@@ -263,6 +312,24 @@ private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
                 FilterChip(selected = vm.offsetRight, onClick = { vm.offsetRight = true }, label = { Text("Derecha ▶") })
             }
         }
+        CreateMethod.INTERSECTION_AZ -> {
+            Text("Punto donde se cruzan las visuales observadas desde $a y desde $b (azimut hacia el punto buscado).")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NumberField(vm.azimuthFromA, { vm.azimuthFromA = it }, "Azimut desde $a", Modifier.weight(1f), "°")
+                NumberField(vm.azimuthFromB, { vm.azimuthFromB = it }, "Azimut desde $b", Modifier.weight(1f), "°")
+            }
+        }
+        CreateMethod.INTERSECTION_DIST -> {
+            Text("Punto a la distancia indicada de $a y de $b. Dos soluciones simétricas respecto de la línea $a-$b.")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NumberField(vm.distFromA, { vm.distFromA = it }, "Distancia desde $a", Modifier.weight(1f), "m")
+                NumberField(vm.distFromB, { vm.distFromB = it }, "Distancia desde $b", Modifier.weight(1f), "m")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = !vm.intersectionRight, onClick = { vm.intersectionRight = false }, label = { Text("◀ Izquierda") })
+                FilterChip(selected = vm.intersectionRight, onClick = { vm.intersectionRight = true }, label = { Text("Derecha ▶") })
+            }
+        }
     }
 
     val prev = vm.preview(sel)
@@ -282,4 +349,43 @@ private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
         Text("Crear punto")
     }
     vm.message?.let { Text(it, modifier = Modifier.padding(top = 4.dp)) }
+}
+
+/**
+ * Resección de 3 puntos (problema de Pothenot, método de Tienstra): "estación libre" con
+ * un total station, sin necesidad de medir distancias, solo los dos ángulos horizontales
+ * entre los 3 puntos conocidos vistos desde la estación.
+ */
+@Composable
+private fun ResectionPanel(sel: List<PointEntity>, vm: CogoViewModel) {
+    SectionTitle("Puntos conocidos (en orden horario visto desde la estación)")
+    Text(
+        if (sel.size < 3) "Seleccioná P1, P2 y P3, en el orden en que los visás girando el instrumento en sentido horario."
+        else "P1=${sel[0].name}  P2=${sel[1].name}  P3=${sel[2].name}",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    SectionTitle("Ángulos horizontales medidos desde la estación")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        NumberField(vm.angleP1P2, { vm.angleP1P2 = it }, "Ángulo P1–P–P2", Modifier.weight(1f), "°")
+        NumberField(vm.angleP2P3, { vm.angleP2P3 = it }, "Ángulo P2–P–P3", Modifier.weight(1f), "°")
+    }
+
+    val prev = vm.resectionResult(sel)
+    Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Column(Modifier.padding(10.dp)) {
+            prev.onSuccess { p ->
+                Text("Posición de la estación", style = MaterialTheme.typography.titleSmall)
+                Text("E ${p.e.f(4)}\nN ${p.n.f(4)}\nH ${p.z.f(4)}", fontFamily = FontFamily.Monospace, fontSize = 15.sp)
+            }.onFailure { Text(it.message ?: "Datos incompletos", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+    OutlinedTextField(
+        vm.resectionName, { vm.resectionName = it }, label = { Text("Nombre") },
+        singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    Button(
+        onClick = { vm.createResection(sel) }, enabled = prev.isSuccess,
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+    ) { Text("Crear punto de estación") }
+    vm.resectionMessage?.let { Text(it, modifier = Modifier.padding(top = 4.dp)) }
 }
