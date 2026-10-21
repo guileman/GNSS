@@ -12,6 +12,7 @@ Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para to
 | **Puntos** | Lista por tipo (relevado, COGO, a replantear, replanteado), edición, alta manual por coordenadas, exportación CSV. |
 | **Cálculo – Medición** | Distancia horizontal, desnivel, distancia inclinada, pendiente, azimut (DMS), ángulos y deflexiones en vértices, superficie (Gauss) y perímetro. Informa el factor de escala local. |
 | **Cálculo – Crear puntos** | Punto medio, prolongación sobre alineación (con o sin extrapolar cota) y estación/desplazamiento perpendicular izquierda/derecha. |
+| **Cálculo – Curva** | Curva horizontal circular simple a partir de PC, tangente de entrada (automática o manual), radio y ángulo central. Calcula tangente, desarrollo, externa, ordenada media, cuerda larga y PT, y genera el estacado (cada N metros de arco, con cuerda y deflexión desde PC) listo para crear como puntos a replantear. |
 | **Replanteo** | Distancia, "Avanzar/Retroceder" y "Derecha/Izquierda", corte/relleno, flecha que rota según el teléfono y radar de precisión a menos de 3 m. Brújula (vector de rotación + declinación WMM) fusionada con el rumbo GNSS al caminar. Alerta sonora y vibración dentro de la tolerancia (2/5/10 cm). |
 
 ## Mapa base y tema

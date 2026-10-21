@@ -40,7 +40,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.topognss.app.cogo.Cogo
+import com.topognss.app.cogo.HorizontalCurve
 import com.topognss.app.cogo.P3
+import com.topognss.app.cogo.curveStakeout
 import com.topognss.app.cogo.formatDms
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
@@ -84,6 +86,47 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
     var newName by mutableStateOf("")
     var newCode by mutableStateOf("")
     var message by mutableStateOf<String?>(null)
+
+    // --- Curva horizontal circular ---
+    var curveManualAzimuth by mutableStateOf("")
+    var curveRadius by mutableStateOf("")
+    var curveDelta by mutableStateOf("")
+    var curveTurnRight by mutableStateOf(true)
+    var curveInterval by mutableStateOf("10")
+    var curveStartStation by mutableStateOf("0")
+    var curveMessage by mutableStateOf<String?>(null)
+
+    /** PC = 1er punto seleccionado. Azimut de tangente: automático (2do punto seleccionado) o manual. */
+    fun curveResult(sel: List<PointEntity>): Result<HorizontalCurve> = runCatching {
+        require(sel.isNotEmpty()) { "Seleccioná el punto PC (inicio de la curva)" }
+        val pc = sel[0].toP3()
+        val az = if (sel.size >= 2) Cogo.azimuth(pc, sel[1].toP3()) else {
+            parseNum(curveManualAzimuth) ?: error("Seleccioná un 2do punto para la tangente, o ingresá el azimut manualmente")
+        }
+        val r = parseNum(curveRadius) ?: error("Ingresá el radio")
+        val d = parseNum(curveDelta) ?: error("Ingresá el ángulo central (delta)")
+        HorizontalCurve(pc, az, r, d, curveTurnRight)
+    }
+
+    fun curveStakeList(sel: List<PointEntity>) = curveResult(sel).mapCatching { curve ->
+        val interval = parseNum(curveInterval) ?: error("Ingresá el intervalo de estacado")
+        require(interval > 0) { "El intervalo debe ser positivo" }
+        val start = parseNum(curveStartStation) ?: 0.0
+        curveStakeout(curve, interval, start, sel.getOrNull(0)?.name ?: "PC")
+    }
+
+    fun saveCurveStakes(sel: List<PointEntity>) = viewModelScope.launch {
+        val proj = project.value ?: return@launch
+        val stakes = curveStakeList(sel).getOrElse { curveMessage = it.message; return@launch }
+        var ok = 0
+        for (s in stakes) {
+            if (s.name == (sel.getOrNull(0)?.name ?: "PC")) continue // PC ya existe como punto
+            val name = repo.nextName(proj.id, "E")
+            val note = "Curva horizontal, estación ${s.station.f(2)}, deflexión ${s.deflectionDeg.f(3)}°"
+            runCatching { repo.insertPlane(proj, name, "", s.point, PointKind.STAKE, note) }.onSuccess { ok++ }
+        }
+        curveMessage = "✔ $ok puntos de estacado creados (para replantear)"
+    }
 
     fun toggle(id: Long) { if (!selected.remove(id)) selected.add(id) }
     fun clear() = selected.clear()
@@ -142,6 +185,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Medición") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Crear puntos") })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Curva") })
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -166,10 +210,11 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
         }
 
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(12.dp)) {
-            if (tab == 0) MeasurementResults(sel, vm, proj.crs().projection.let { tm ->
-                sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
-            })
-            else CreatePanel(sel, vm)
+            if (tab == 0) {
+                MeasurementResults(sel, vm, proj.crs().projection.let { tm ->
+                    sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
+                })
+            } else if (tab == 1) CreatePanel(sel, vm) else CurvePanel(sel, vm)
         }
     }
 }
@@ -282,4 +327,75 @@ private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
         Text("Crear punto")
     }
     vm.message?.let { Text(it, modifier = Modifier.padding(top = 4.dp)) }
+}
+
+/**
+ * Curva horizontal circular: PC = 1er punto seleccionado; la tangente de entrada se toma
+ * automáticamente del 2do punto seleccionado (azimut PC→2do punto) o se ingresa manualmente.
+ * Genera el estacado (PC, puntos intermedios cada N metros de arco, PT) listo para replantear.
+ */
+@Composable
+private fun CurvePanel(sel: List<PointEntity>, vm: CogoViewModel) {
+    val pcName = sel.getOrNull(0)?.name
+    SectionTitle("Tangente de entrada")
+    Text(
+        when {
+            pcName == null -> "Seleccioná el punto PC (inicio de la curva)."
+            sel.size >= 2 -> "PC: $pcName   ·   tangente hacia ${sel[1].name}"
+            else -> "PC: $pcName"
+        },
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (pcName != null && sel.size < 2) {
+        NumberField(vm.curveManualAzimuth, { vm.curveManualAzimuth = it }, "Azimut de tangente en PC", suffix = "°")
+    }
+
+    SectionTitle("Datos de la curva")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        NumberField(vm.curveRadius, { vm.curveRadius = it }, "Radio", Modifier.weight(1f), "m")
+        NumberField(vm.curveDelta, { vm.curveDelta = it }, "Ángulo central (Δ)", Modifier.weight(1f), "°")
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilterChip(selected = !vm.curveTurnRight, onClick = { vm.curveTurnRight = false }, label = { Text("◀ Gira izquierda") })
+        FilterChip(selected = vm.curveTurnRight, onClick = { vm.curveTurnRight = true }, label = { Text("Gira derecha ▶") })
+    }
+
+    val curveRes = vm.curveResult(sel)
+    Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Column(Modifier.padding(10.dp)) {
+            curveRes.onSuccess { c ->
+                Text("Elementos de la curva", style = MaterialTheme.typography.titleSmall)
+                KeyValue("Tangente (T)", c.tangentLength.f(3) + " m")
+                KeyValue("Desarrollo (L)", c.length.f(3) + " m")
+                KeyValue("Externa (E)", c.external.f(3) + " m")
+                KeyValue("Ordenada media (M)", c.middleOrdinate.f(3) + " m")
+                KeyValue("Cuerda larga", c.longChord.f(3) + " m")
+                KeyValue("Azimut de salida (PT)", formatDms(c.outTangentAzimuthDeg))
+                KeyValue("PT  E/N", "${c.pt.e.f(3)} / ${c.pt.n.f(3)}")
+            }.onFailure { Text(it.message ?: "Datos incompletos", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+
+    SectionTitle("Estacado")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        NumberField(vm.curveInterval, { vm.curveInterval = it }, "Intervalo", Modifier.weight(1f), "m")
+        NumberField(vm.curveStartStation, { vm.curveStartStation = it }, "Estación en PC", Modifier.weight(1f), "m")
+    }
+    val stakes = vm.curveStakeList(sel)
+    stakes.onSuccess { list ->
+        Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Column(Modifier.padding(10.dp)) {
+                list.forEach { s ->
+                    KeyValue(
+                        "${s.name}  (${s.station.f(2)})",
+                        "E ${s.point.e.f(3)}  N ${s.point.n.f(3)}  ·  cuerda ${s.chordFromPc.f(3)} m  defl ${formatDms(s.deflectionDeg)}",
+                    )
+                }
+            }
+        }
+        Button(onClick = { vm.saveCurveStakes(sel) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Crear puntos de estacado (a replantear)")
+        }
+    }.onFailure { Text(it.message ?: "Datos incompletos", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    vm.curveMessage?.let { Text(it, modifier = Modifier.padding(top = 4.dp)) }
 }
