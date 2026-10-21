@@ -55,6 +55,7 @@ import com.topognss.app.cogo.curveStakeout
 import com.topognss.app.cogo.formatDms
 import com.topognss.app.cogo.intersectionByAzimuths
 import com.topognss.app.cogo.intersectionByDistances
+import com.topognss.app.cogo.netArea
 import com.topognss.app.cogo.resectionTienstra
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
@@ -228,6 +229,13 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
         curveMessage = "✔ $ok puntos de estacado creados (para replantear)"
     }
 
+    // --- Superficie con descuento de edificado ---
+    val holeSelected = mutableStateListOf<Long>()
+    var showHolePicker by mutableStateOf(false)
+
+    fun toggleHole(id: Long) { if (!holeSelected.remove(id)) holeSelected.add(id) }
+    fun clearHole() = holeSelected.clear()
+
     fun toggle(id: Long) { if (!selected.remove(id)) selected.add(id) }
     fun clear() = selected.clear()
 
@@ -324,7 +332,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
 
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(12.dp)) {
             if (tab == 0) {
-                MeasurementResults(sel, vm, proj.crs().projection.let { tm ->
+                MeasurementResults(sel, all, vm, proj.crs().projection.let { tm ->
                     sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
                 })
             } else if (tab == 1) CreatePanel(sel, vm)
@@ -336,7 +344,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
 }
 
 @Composable
-private fun MeasurementResults(sel: List<PointEntity>, vm: CogoViewModel, scale: Double?) {
+private fun MeasurementResults(sel: List<PointEntity>, all: List<PointEntity>, vm: CogoViewModel, scale: Double?) {
     if (sel.size < 2) { Text("Seleccioná 2 o más puntos para medir."); return }
     val pts = sel.map { it.toP3() }
     SectionTitle("Tramos")
@@ -381,6 +389,7 @@ private fun MeasurementResults(sel: List<PointEntity>, vm: CogoViewModel, scale:
                 KeyValue("Perímetro", poly.perimeter.f(3) + " m")
                 KeyValue("Sentido", if (poly.clockwise) "horario" else "antihorario", mono = false)
             }
+            DiscountSection(pts, all, vm)
         }
     }
     scale?.let { k ->
@@ -500,6 +509,42 @@ private fun ResectionPanel(sel: List<PointEntity>, vm: CogoViewModel) {
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
     ) { Text("Crear punto de estación") }
     vm.resectionMessage?.let { Text(it, modifier = Modifier.padding(top = 4.dp)) }
+}
+
+/**
+ * Superficie con descuento de edificado: permite elegir, aparte de la selección principal
+ * (el polígono exterior, p. ej. el terreno), un segundo grupo de puntos que forman el polígono
+ * a descontar (p. ej. lo construido), y muestra la planilla de superficie (bruta, edificada, neta).
+ */
+@Composable
+private fun DiscountSection(outer: List<P3>, all: List<PointEntity>, vm: CogoViewModel) {
+    val holePts = vm.holeSelected.mapNotNull { id -> all.firstOrNull { it.id == id } }
+    SectionTitle("Superficie con descuento")
+    TextButton(onClick = { vm.showHolePicker = !vm.showHolePicker }) {
+        Text(if (vm.showHolePicker) "Ocultar selección de edificado" else "Elegir polígono a descontar (edificado)")
+    }
+    if (vm.showHolePicker) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (holePts.isEmpty()) "Tocá en la lista los puntos del polígono a descontar, en orden"
+                else holePts.joinToString(" → ") { it.name },
+                Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 2,
+            )
+            TextButton(onClick = { vm.clearHole() }) { Text("Limpiar") }
+        }
+        OrderedPointSelector(all, vm.holeSelected, vm::toggleHole, Modifier.fillMaxWidth().heightIn(max = 220.dp))
+    }
+    if (holePts.size >= 3) {
+        val result = netArea(outer, listOf(holePts.map { it.toP3() }))
+        Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Column(Modifier.padding(10.dp)) {
+                Text("Planilla de superficie", style = MaterialTheme.typography.titleSmall)
+                KeyValue("Superficie bruta (terreno)", result.grossArea.f(3) + " m²")
+                KeyValue("Superficie edificada (a descontar)", result.holeAreas.sum().f(3) + " m²")
+                KeyValue("Superficie libre/neta", result.netArea.f(3) + " m²  (${(result.netArea / 10_000).f(5)} ha)")
+            }
+        }
+    }
 }
 
 /**
