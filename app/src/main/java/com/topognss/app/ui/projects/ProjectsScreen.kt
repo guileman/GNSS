@@ -37,6 +37,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.topognss.app.data.ProjectEntity
 import com.topognss.app.data.crs
+import com.topognss.app.data.nomenclaturaCatastral
 import com.topognss.app.geo.CrsType
 import com.topognss.app.geo.ProjectCrs
 import com.topognss.app.ui.components.NumberField
@@ -97,6 +98,9 @@ fun ProjectsScreen(onDone: () -> Unit, vm: ProjectsViewModel = viewModel()) {
                             Text(p.name + if (isActive) "  (activo)" else "", style = MaterialTheme.typography.titleMedium)
                             Text(p.crs().describe(), style = MaterialTheme.typography.bodySmall)
                             if (p.description.isNotBlank()) Text(p.description, style = MaterialTheme.typography.bodySmall)
+                            p.nomenclaturaCatastral().takeIf { it.isNotBlank() }?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                         TextButton(onClick = { editing = p }) { Text("Editar") }
                     }
@@ -131,6 +135,11 @@ private fun ProjectDialog(
     var south by remember { mutableStateOf(initial?.south ?: true) }
     var oLat by remember { mutableStateOf(initial?.originLat?.toString() ?: "") }
     var oLon by remember { mutableStateOf(initial?.originLon?.toString() ?: "") }
+    var circ by remember { mutableStateOf(initial?.catastroCircunscripcion ?: "") }
+    var secc by remember { mutableStateOf(initial?.catastroSeccion ?: "") }
+    var mzCh by remember { mutableStateOf(initial?.catastroManzanaOChacra ?: "") }
+    var parc by remember { mutableStateOf(initial?.catastroParcela ?: "") }
+    var partida by remember { mutableStateOf(initial?.catastroPartida ?: "") }
     var confirmDelete by remember { mutableStateOf(false) }
 
     fun autoFromGnss() {
@@ -180,6 +189,20 @@ private fun ProjectDialog(
                 OutlinedButton(onClick = { autoFromGnss() }, enabled = gnssLatLon != null) {
                     Text(if (gnssLatLon != null) "Completar con posición del receptor" else "Sin posición del receptor")
                 }
+                Text("Nomenclatura catastral (opcional)", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "El formato varía por provincia/país; completá solo los campos que uses.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(circ, { circ = it }, label = { Text("Circunscripción") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(secc, { secc = it }, label = { Text("Sección") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(mzCh, { mzCh = it }, label = { Text("Manzana / Chacra") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(parc, { parc = it }, label = { Text("Parcela") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                OutlinedTextField(partida, { partida = it }, label = { Text("Partida inmobiliaria") }, singleLine = true)
                 if (initial != null) {
                     Text("Si cambiás el sistema se recalculan las planas de todos los puntos.",
                         style = MaterialTheme.typography.bodySmall)
@@ -199,6 +222,9 @@ private fun ProjectDialog(
                         name = name.trim(), description = desc.trim(), crsType = type.name,
                         zone = zoneInt ?: 0, south = south,
                         originLat = parseNum(oLat) ?: 0.0, originLon = parseNum(oLon) ?: 0.0,
+                        catastroCircunscripcion = circ.trim(), catastroSeccion = secc.trim(),
+                        catastroManzanaOChacra = mzCh.trim(), catastroParcela = parc.trim(),
+                        catastroPartida = partida.trim(),
                     )
                 )
             }) { Text("Guardar") }

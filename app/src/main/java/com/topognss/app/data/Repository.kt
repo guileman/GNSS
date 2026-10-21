@@ -70,6 +70,7 @@ class TopoRepository(private val db: AppDatabase) {
         fun toCsv(project: ProjectEntity, list: List<PointEntity>): String {
             val sb = StringBuilder()
             sb.append("# Proyecto: ${project.name} · CRS: ${project.crs().describe()}\n")
+            project.nomenclaturaCatastral().takeIf { it.isNotBlank() }?.let { sb.append("# Nomenclatura catastral: $it\n") }
             sb.append("Nombre,Este,Norte,Cota,Codigo,Tipo,Latitud,Longitud,AltElipsoidal,Solucion,HRMS,VRMS,PDOP,Sats,Epocas,Nota\n")
             fun d(v: Double?, dec: Int) = v?.let { String.format(Locale.US, "%.${dec}f", it) } ?: ""
             for (p in list) {
