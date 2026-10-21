@@ -237,7 +237,11 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AlignmentPanel(vm: StakeoutViewModel, points: List<com.topognss.app.data.PointEntity>, s: com.topognss.app.gnss.GnssState) {
+private fun androidx.compose.foundation.layout.ColumnScope.AlignmentPanel(
+    vm: StakeoutViewModel,
+    points: List<com.topognss.app.data.PointEntity>,
+    s: com.topognss.app.gnss.GnssState,
+) {
     var picking by remember { mutableStateOf(false) }
     val path = vm.alignmentSelected.mapNotNull { id -> points.firstOrNull { it.id == id } }
     val fix: AlignmentFix? = vm.alignmentFix(points, s)
