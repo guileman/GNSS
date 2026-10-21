@@ -61,7 +61,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.topognss.app.cogo.AlignmentFix
 import com.topognss.app.cogo.formatDms
+import com.topognss.app.ui.components.OrderedPointSelector
 import com.topognss.app.sensors.FusedHeading
 import com.topognss.app.sensors.HeadingMode
 import com.topognss.app.sensors.HeadingSource
@@ -113,6 +115,15 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
     )
 
     Column(Modifier.fillMaxSize().background(bg).padding(horizontal = 12.dp)) {
+        // --- Modo: punto único o eje/alineación ---
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = !vm.alignmentMode, onClick = { vm.alignmentMode = false }, label = { Text("Punto") })
+            FilterChip(selected = vm.alignmentMode, onClick = { vm.alignmentMode = true }, label = { Text("Eje") })
+        }
+        if (vm.alignmentMode) {
+            AlignmentPanel(vm, points, s)
+            return@Column
+        }
         // --- Objetivo ---
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { vm.step(-1) }) { Text("◀") }
@@ -214,6 +225,95 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
                 }
             },
             confirmButton = { TextButton(onClick = { picking = false }) { Text("Cerrar") } },
+        )
+    }
+}
+
+/**
+ * Replanteo de ejes/alineaciones: en vez de un único punto objetivo, el operador elige una
+ * polilínea de puntos (el eje, p. ej. una cañería o un cordón) y camina sobre ella; la app
+ * muestra en todo momento la estación (distancia acumulada desde el inicio del eje) y el
+ * desvío lateral (+ derecha / − izquierda) respecto del eje, para corregir la trayectoria.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.AlignmentPanel(
+    vm: StakeoutViewModel,
+    points: List<com.topognss.app.data.PointEntity>,
+    s: com.topognss.app.gnss.GnssState,
+) {
+    var picking by remember { mutableStateOf(false) }
+    val path = vm.alignmentSelected.mapNotNull { id -> points.firstOrNull { it.id == id } }
+    val fix: AlignmentFix? = vm.alignmentFix(points, s)
+    val totalLength = vm.alignmentLength(points)
+
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Eje", style = MaterialTheme.typography.labelSmall)
+            Text(
+                if (path.isEmpty()) "Elegir puntos del eje…" else path.joinToString(" → ") { it.name },
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+            )
+        }
+        TextButton(onClick = { picking = true }) { Text("Elegir") }
+        if (path.isNotEmpty()) TextButton(onClick = { vm.clearAlignment() }) { Text("Limpiar") }
+    }
+
+    when {
+        path.size < 2 -> Text("Seleccioná 2 o más puntos, en orden, para definir el eje.", Modifier.padding(16.dp))
+        s.lat == null || s.lon == null -> Text("Esperando posición del receptor…", Modifier.padding(16.dp), color = SingleRed)
+        fix == null -> Text("Sin posición en el plano del proyecto.", Modifier.padding(16.dp), color = SingleRed)
+        else -> {
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Estación", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "${fix.station.f(2)} / ${totalLength.f(2)} m", fontSize = 26.sp,
+                        fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (fix.offset >= 0) "Derecha" else "Izquierda", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "${abs(fix.offset).f(3)} m", fontSize = 34.sp, fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (abs(fix.offset) <= vm.tolerance) FixGreen else MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+            }
+            Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp)) {
+                TopoMap(
+                    modifier = Modifier.fillMaxSize(),
+                    points = path.mapIndexed { i, p -> p.toMapPoint(order = i + 1) },
+                    me = s.toMapMe(),
+                    line = path.map { it.lat to it.lon },
+                    follow = true,
+                    fitKey = vm.alignmentSelected.joinToString(","),
+                )
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(0.02, 0.05, 0.10).forEach { tol ->
+                    FilterChip(
+                        selected = abs(vm.tolerance - tol) < 1e-6, onClick = { vm.updateTolerance(tol) },
+                        label = { Text("${(tol * 100).toInt()} cm") },
+                    )
+                }
+                Button(onClick = { vm.recordAlignment(points, s) }, modifier = Modifier.weight(1f)) { Text("Registrar") }
+            }
+        }
+    }
+    vm.message?.let { Text(it, fontSize = 12.sp) }
+
+    if (picking) {
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text("Puntos del eje (en orden)") },
+            text = {
+                Column {
+                    OrderedPointSelector(points, vm.alignmentSelected, vm::toggleAlignmentPoint, Modifier.heightIn(max = 420.dp))
+                }
+            },
+            confirmButton = { TextButton(onClick = { picking = false }) { Text("Listo") } },
         )
     }
 }
