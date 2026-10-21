@@ -196,7 +196,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
                 Icon(Icons.Filled.Map, contentDescription = "Mapa", tint = if (selectOnMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { selectOnMap = false }, modifier = Modifier.size(32.dp)) {
-                Icon(ListIcon, contentDescription = "Lista", tint = if (!selectOnMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.ListIcon, contentDescription = "Lista", tint = if (!selectOnMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { vm.clear() }, modifier = Modifier.size(32.dp), enabled = sel.isNotEmpty()) {
                 Icon(Icons.Filled.Close, contentDescription = "Limpiar selección")

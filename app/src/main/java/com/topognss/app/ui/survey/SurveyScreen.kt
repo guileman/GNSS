@@ -327,7 +327,7 @@ fun SurveyScreen(onOpenProjects: () -> Unit, vm: SurveyViewModel = viewModel()) 
             Text(" ${recent.size}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { showMap = true }) { Icon(Icons.Filled.Map, contentDescription = "Mapa", tint = if (showMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-            IconButton(onClick = { showMap = false }) { Icon(ListIcon, contentDescription = "Lista", tint = if (!showMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+            IconButton(onClick = { showMap = false }) { Icon(Icons.Filled.ListIcon, contentDescription = "Lista", tint = if (!showMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         // El mapa domina el espacio restante de la pantalla.
         if (showMap) {
