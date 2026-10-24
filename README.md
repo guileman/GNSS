@@ -43,9 +43,8 @@ Cada proyecto define su plano de proyección. La proyección Transversa de Merca
 
 1. **Settings → Position output → Output 1**.
 2. Elegí el canal:
-   - **Bluetooth**: emparejá antes el teléfono desde los ajustes de Android.
-   - **TCP** (rol servidor): con el hotspot del receptor la IP es `192.168.42.1`; usá el puerto que configures en Flow.
-   - **TCP cliente / UDP**: cargá en Flow la IP del teléfono (la app la muestra) y el puerto.
+   - **Bluetooth**: en la app, Receptor → Buscar dispositivos → tocá el receptor para emparejarlo; conecta solo. Los ya emparejados conectan con un toque.
+   - **Wi-Fi** (TCP, rol servidor, puerto `9001`): conectá el teléfono a la red Wi-Fi del receptor desde los ajustes de Android, volvé a la app y tocá Conectar (IP fija `192.168.42.1`).
 3. Formato **NMEA**, con al menos **GGA, GST, GSA y RMC**. Sin GST la app no puede mostrar HRMS/VRMS.
 4. La batería del RS2 no viaja por NMEA estándar, por eso la barra muestra "N/D". El parser deja un punto de extensión para tramas propietarias (`$P…BAT…`).
 
