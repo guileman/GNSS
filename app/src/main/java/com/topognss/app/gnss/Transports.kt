@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothSocket
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import java.io.IOException
 import java.io.InputStream
 import java.net.DatagramPacket
@@ -13,6 +14,9 @@ import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.UUID
 
 /**
@@ -54,12 +58,31 @@ internal class NmeaLineSplitter(private val onLine: (String) -> Unit) {
 }
 
 internal fun pump(input: InputStream, onLine: (String) -> Unit) {
-    val splitter = NmeaLineSplitter(onLine)
+    var sentences = 0
+    var bytes = 0L
+    val start = System.currentTimeMillis()
+    val preview = StringBuilder()
+    val splitter = NmeaLineSplitter { sentences++; onLine(it) }
     val buf = ByteArray(4096)
     while (true) {
         val n = input.read(buf)
         if (n < 0) throw IOException("El receptor cerró la conexión")
-        if (n > 0) splitter.feed(buf, n)
+        if (n > 0) {
+            bytes += n
+            if (preview.length < 40) for (i in 0 until n) {
+                val c = buf[i].toInt() and 0xFF
+                if (preview.length < 40 && c in 0x20..0x7E) preview.append(c.toChar())
+            }
+            splitter.feed(buf, n)
+            // Llegan bytes pero ninguna trama NMEA: la salida del receptor está en otro formato (ERB, LLH…)
+            if (sentences == 0 && System.currentTimeMillis() - start > 4000) {
+                throw IOException(
+                    "El receptor envía datos que no son NMEA" +
+                        (if (preview.isNotBlank()) " («${preview.toString().trim()}»)" else "") +
+                        ". En Emlid Flow poné el formato de la salida de posición en NMEA."
+                )
+            }
+        }
     }
 }
 
@@ -84,6 +107,9 @@ class BluetoothSppTransport(
 
     @SuppressLint("MissingPermission") // BLUETOOTH_CONNECT se verifica en la UI antes de conectar
     override fun run(onConnected: () -> Unit, onLine: (String) -> Unit) {
+        // GnssManager reutiliza este objeto en cada reintento y llama a close() tras cada caída:
+        // si no se reinicia la bandera, todos los reintentos fallan al instante con "Cancelado".
+        closed = false
         val device = adapter.getRemoteDevice(address)
         // cancelDiscovery() acelera mucho el connect(), pero en API 31+ exige BLUETOOTH_SCAN.
         runCatching { adapter.cancelDiscovery() }
@@ -152,21 +178,71 @@ class TcpClientTransport(
 ) : GnssTransport {
     override val label = if (networkName != null) "Wi-Fi · $networkName" else "TCP cliente · $host:$port"
     @Volatile private var socket: Socket? = null
+    @Volatile private var netCallback: ConnectivityManager.NetworkCallback? = null
+
+    /**
+     * Pide la red Wi-Fi a Android. Mientras la app tenga un pedido activo, el sistema NO la abandona
+     * por "no tiene Internet" para pasarse a datos móviles (el hotspot del RS2 nunca tiene Internet).
+     */
+    private fun acquireWifi(): Network? {
+        val c = cm ?: return null
+        releaseWifi()
+        var found: Network? = null
+        val latch = CountDownLatch(1)
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { found = network; latch.countDown() }
+        }
+        val req = NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build()
+        try {
+            c.requestNetwork(req, cb)
+            netCallback = cb
+            latch.await(4, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            // Sin permiso o sin soporte: se usa la red Wi-Fi activa como antes
+        }
+        return found ?: findWifiNetwork(c)
+    }
+
+    private fun releaseWifi() {
+        val cb = netCallback ?: return
+        netCallback = null
+        runCatching { cm?.unregisterNetworkCallback(cb) }
+    }
 
     override fun run(onConnected: () -> Unit, onLine: (String) -> Unit) {
+        val net = acquireWifi()
         val s = Socket()
         socket = s
-        findWifiNetwork(cm)?.let { net -> runCatching { net.bindSocket(s) } }
+        net?.let { runCatching { it.bindSocket(s) } }
         s.tcpNoDelay = true
         s.keepAlive = true
-        s.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        try {
+            s.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        } catch (e: SocketTimeoutException) {
+            throw IOException("No responde el receptor en $host:$port. ¿Sigue el teléfono conectado a su red Wi-Fi?", e)
+        } catch (e: java.net.ConnectException) {
+            throw IOException(
+                "El receptor rechazó la conexión en el puerto $port. En Emlid Flow, Configuración → Salida de posición: " +
+                    "TCP, rol servidor, puerto $port, formato NMEA.", e
+            )
+        }
         // Si en 5 s no llega ningún byte, read() lanza SocketTimeoutException → reconexión.
         s.soTimeout = READ_TIMEOUT_MS
         onConnected()
-        pump(s.getInputStream(), onLine)
+        try {
+            pump(s.getInputStream(), onLine)
+        } catch (e: SocketTimeoutException) {
+            throw IOException(
+                "Conectó, pero el receptor no envía datos. En Emlid Flow, Configuración → Salida de posición: " +
+                    "TCP servidor, puerto $port, formato NMEA, y activá la salida.", e
+            )
+        }
     }
 
-    override fun close() { runCatching { socket?.close() } }
+    override fun close() {
+        runCatching { socket?.close() }
+        releaseWifi()
+    }
 }
 
 /** El teléfono escucha y el RS2 se conecta como cliente TCP (Position output → TCP client). */

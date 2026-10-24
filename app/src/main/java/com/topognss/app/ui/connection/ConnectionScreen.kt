@@ -71,6 +71,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.topognss.app.gnss.BluetoothSppTransport
 import com.topognss.app.gnss.ConnectionStatus
@@ -182,7 +185,8 @@ class ConnectionViewModel(app: Application) : AndroidViewModel(app) {
                             pairingAddress = null
                             message = null
                             refreshPaired()
-                            connectBluetooth(d.address) // emparejó: conecta solo
+                            // emparejó: conecta solo, con una pausa para que el sistema termine de guardar el vínculo
+                            viewModelScope.launch { delay(1500); connectBluetooth(d.address) }
                         }
                         BluetoothDevice.BOND_NONE -> {
                             pairingAddress = null
@@ -213,6 +217,8 @@ class ConnectionViewModel(app: Application) : AndroidViewModel(app) {
 
     @SuppressLint("MissingPermission")
     fun startScan() {
+        // Buscar dispositivos mientras hay un enlace Bluetooth activo lo vuelve inestable y lo corta
+        if (topo.gnss.state.value.connection != ConnectionStatus.DISCONNECTED) return
         val adapter = btAdapter ?: return
         if (!adapter.isEnabled) { _btEnabled.value = false; return }
         if (!hasScanPermission()) return
@@ -270,7 +276,7 @@ class ConnectionViewModel(app: Application) : AndroidViewModel(app) {
         refreshWifi()
         if (hasBtPermission()) {
             refreshPaired()
-            if (_btEnabled.value && hasScanPermission()) startScan()
+            if (_btEnabled.value && hasScanPermission()) startScan() // (no escanea si hay conexión)
         }
     }
 
@@ -379,7 +385,7 @@ fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
                         }
                     }
                     s.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                    if (s.connection != ConnectionStatus.CONNECTED && isWifiConn) {
+                    if (s.connection != ConnectionStatus.CONNECTED && isWifiConn && s.errorMessage == null) {
                         Text(
                             "Si no conecta: en Emlid Flow → Configuración → Salida de posición, elegí TCP (servidor), puerto 9001, formato NMEA.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

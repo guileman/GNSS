@@ -38,6 +38,7 @@ class GnssManager {
     val rawLines: StateFlow<List<String>> = _rawLines.asStateFlow()
     private val rawBuffer = ArrayDeque<String>()
     private var lastRawPublish = 0L
+    @Volatile private var lastLineAt = 0L
 
     @Volatile private var transport: GnssTransport? = null
     private var job: Job? = null
@@ -49,23 +50,55 @@ class GnssManager {
             var backoff = 1000L
             while (isActive && transport === t) {
                 publishConnection(ConnectionStatus.CONNECTING, t.label)
+                var silent = false
+                var connectedAt = 0L
+                // Vigilante: un enlace Bluetooth/Wi-Fi puede quedar "abierto" sin entregar nada.
+                // Si no llegan tramas por 8 s se corta y se reconecta, en vez de quedar colgado.
+                val watchdog = launch {
+                    while (isActive) {
+                        delay(2000)
+                        val ref = maxOf(lastLineAt, connectedAt)
+                        if (connectedAt > 0 && System.currentTimeMillis() - ref > SILENCE_MS) {
+                            silent = true
+                            t.close()
+                            return@launch
+                        }
+                    }
+                }
                 try {
                     t.run(
                         onConnected = {
                             backoff = 1000L
+                            connectedAt = System.currentTimeMillis()
                             publishConnection(ConnectionStatus.CONNECTED, t.label)
                         },
                         onLine = ::onLine,
                     )
                 } catch (e: Exception) {
                     if (transport !== t) break // desconexión pedida por el usuario
-                    publishConnection(ConnectionStatus.ERROR, t.label, e.message ?: e.javaClass.simpleName)
+                    publishConnection(
+                        ConnectionStatus.ERROR, t.label,
+                        if (silent) "El receptor no envía datos (8 s sin tramas). Revisá que la salida de posición esté en formato NMEA."
+                        else friendly(e),
+                    )
+                } finally {
+                    watchdog.cancel()
                 }
                 t.close()
                 if (transport !== t) break
                 delay(backoff)
                 backoff = (backoff * 2).coerceAtMost(8000L)
             }
+        }
+    }
+
+    private fun friendly(e: Exception): String {
+        val m = e.message ?: e.javaClass.simpleName
+        return when {
+            m.contains("socket might closed", true) || m.contains("read ret", true) || m.contains("Software caused", true) ||
+                m.contains("Connection reset", true) || m.contains("Broken pipe", true) ->
+                "Se perdió la conexión con el receptor. Reconectando…"
+            else -> m
         }
     }
 
@@ -94,6 +127,7 @@ class GnssManager {
             rawBuffer.addLast(line)
             while (rawBuffer.size > 60) rawBuffer.removeFirst()
             val now = System.currentTimeMillis()
+            lastLineAt = now
             if (now - lastRawPublish > 300) { // limitar recomposiciones de la consola
                 lastRawPublish = now
                 _rawLines.value = rawBuffer.toList()
@@ -102,3 +136,5 @@ class GnssManager {
         if (epoch != null) _epochs.tryEmit(epoch)
     }
 }
+
+private const val SILENCE_MS = 8000L
