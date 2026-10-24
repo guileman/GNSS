@@ -409,8 +409,13 @@ fun ConnectionScreen(onOpenSettings: () -> Unit, vm: ConnectionViewModel = viewM
                     KeyValue("Solución", s.solution.label)
                     KeyValue("Latitud", s.lat.f(9))
                     KeyValue("Longitud", s.lon.f(9))
-                    KeyValue("Altura (MSL)", s.altitudeMsl.f(3) + " m")
+                    if (s.format == "LLH") {
+                        KeyValue("Altura elipsoidal", s.ellipsoidalHeight.f(3) + " m")
+                    } else {
+                        KeyValue("Altura (MSL)", s.altitudeMsl.f(3) + " m")
+                    }
                     KeyValue("Satélites", s.satellites?.toString() ?: "—")
+                    KeyValue("Formato", s.format ?: "—")
                     KeyValue("HRMS / VRMS", "${s.hrms.f(3)} / ${s.vrms.f(3)} m")
                     KeyValue("Edad corrección", s.diffAge.f(1) + " s")
                     if (details) {
@@ -420,7 +425,14 @@ fun ConnectionScreen(onOpenSettings: () -> Unit, vm: ConnectionViewModel = viewM
                         KeyValue("Velocidad / rumbo", "${s.speedMs.f(2)} m/s · ${s.courseDeg.f(1)}°")
                         KeyValue("Tramas OK / erróneas", "${s.sentences} / ${s.badSentences}")
                     }
-                    if (s.hrms == null && s.connection == ConnectionStatus.CONNECTED) {
+                    if (s.format == "LLH") {
+                        Text(
+                            "El receptor envía LLH: hay posición y precisión, pero no cota sobre el nivel del mar. " +
+                                "Para tener cota, en Emlid Flow poné el formato de la salida de posición en NMEA.",
+                            color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (s.format == "NMEA" && s.hrms == null && s.connection == ConnectionStatus.CONNECTED) {
                         Text(
                             "Sin HRMS/VRMS: habilitá la sentencia GST en la salida NMEA del receptor.",
                             color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall,

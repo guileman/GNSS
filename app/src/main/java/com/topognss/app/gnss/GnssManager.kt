@@ -87,7 +87,7 @@ class GnssManager {
                     if (transport !== t) { t.close(); break } // desconexión pedida por el usuario
                     publishConnection(
                         ConnectionStatus.ERROR, t.label,
-                        if (silent.get()) "El receptor no envía datos (8 s sin tramas). Revisá que la salida de posición esté en formato NMEA."
+                        if (silent.get()) "El receptor no envía datos (8 s sin tramas). Revisá que la salida de posición del receptor esté activa (NMEA o LLH)."
                         else friendly(e),
                     )
                 } finally {

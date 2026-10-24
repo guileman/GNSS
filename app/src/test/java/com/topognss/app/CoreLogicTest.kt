@@ -81,6 +81,28 @@ class CoreLogicTest {
         assertEquals(1.2, agg.state.pdop!!, 1e-12)
     }
 
+    @Test fun parsesEmlidLlh() {
+        val agg = NmeaAggregator { 1000L }
+        val line = "2026/10/24 20:44:04.000  -32.920782726  -64.123456789   520.1234   1  25   0.0030   0.0040   0.0150   0.0010  -0.0020   0.0030   1.00  999.9"
+        val e = agg.accept(line)
+        assertNotNull(e)
+        assertEquals(SolutionType.FIX, e!!.solution)
+        assertEquals(-32.920782726, e.lat, 1e-12)
+        assertEquals(0.005, e.hrms!!, 1e-12)
+        assertEquals(0.015, e.vrms!!, 1e-12)
+        assertNull(e.altitudeMsl)
+        assertEquals(520.1234, agg.state.ellipsoidalHeight!!, 1e-9)
+        assertEquals("LLH", agg.state.format)
+        assertEquals(25, agg.state.satellites)
+    }
+
+    @Test fun llhFloatAndGarbage() {
+        val agg = NmeaAggregator { 0L }
+        val e = agg.accept("2026/10/24 20:44:05.000 -32.9 -64.1 520.0 2 18 0.05 0.05 0.10")
+        assertEquals(SolutionType.FLOAT, e!!.solution)
+        assertNull(agg.accept("hola mundo"))
+    }
+
     @Test fun noEpochWithoutFix() {
         val agg = NmeaAggregator { 0L }
         assertNull(agg.accept(cs("GPGGA,121212.00,,,,,0,00,,,M,,M,,")))

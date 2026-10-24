@@ -53,6 +53,7 @@ internal class NmeaLineSplitter(private val onLine: (String) -> Unit) {
 
     private fun flush() {
         if (sb.length > 6 && sb[0] == '$') onLine(sb.toString())
+        else if (sb.length > 20 && LlhParser.looksLike(sb)) onLine(sb.toString()) // formato LLH de Emlid
         sb.setLength(0)
     }
 }
@@ -74,12 +75,12 @@ internal fun pump(input: InputStream, onLine: (String) -> Unit) {
                 if (preview.length < 40 && c in 0x20..0x7E) preview.append(c.toChar())
             }
             splitter.feed(buf, n)
-            // Llegan bytes pero ninguna trama NMEA: la salida del receptor está en otro formato (ERB, LLH…)
+            // Llegan bytes pero ninguna línea NMEA ni LLH: la salida está en otro formato (ERB, XYZ…)
             if (sentences == 0 && System.currentTimeMillis() - start > 4000) {
                 throw IOException(
-                    "El receptor envía datos que no son NMEA" +
+                    "El receptor envía datos en un formato que la app no lee" +
                         (if (preview.isNotBlank()) " («${preview.toString().trim()}»)" else "") +
-                        ". En Emlid Flow poné el formato de la salida de posición en NMEA."
+                        ". En Emlid Flow poné el formato de la salida de posición en NMEA o LLH."
                 )
             }
         }

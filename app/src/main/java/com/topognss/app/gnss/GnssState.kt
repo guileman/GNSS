@@ -52,10 +52,14 @@ data class GnssState(
     val lastEpochMillis: Long = 0L,
     val sentences: Long = 0,
     val badSentences: Long = 0,
+    /** Altura elipsoidal recibida directamente (formato LLH); en NMEA se calcula como H + N. */
+    val ellipsoidalHeightRaw: Double? = null,
+    /** Formato de los datos que manda el receptor: "NMEA" o "LLH" (null hasta recibir algo). */
+    val format: String? = null,
 ) {
-    /** Altura elipsoidal h = H + N. */
+    /** Altura elipsoidal h: la recibida en LLH, o H + N desde GGA. */
     val ellipsoidalHeight: Double?
-        get() = if (altitudeMsl != null) altitudeMsl + (geoidSeparation ?: 0.0) else null
+        get() = ellipsoidalHeightRaw ?: if (altitudeMsl != null) altitudeMsl + (geoidSeparation ?: 0.0) else null
 
     val hasPosition: Boolean get() = lat != null && lon != null && solution != SolutionType.NONE
 
@@ -89,16 +93,54 @@ class NmeaAggregator(private val clock: () -> Long = System::currentTimeMillis) 
 
     /** @return la [Epoch] si la línea cerró una época con posición, si no null. */
     fun accept(line: String): Epoch? {
+        // Formato LLH de Emlid (por defecto en la salida de posición del Reach)
+        if (!line.startsWith("$")) {
+            val l = LlhParser.parse(line)
+            if (l == null) {
+                state = state.copy(badSentences = state.badSentences + 1)
+                return null
+            }
+            return applyLlh(l)
+        }
         when (val r = NmeaParser.parse(line)) {
             is NmeaParser.Result.Invalid -> {
                 state = state.copy(badSentences = state.badSentences + 1)
                 return null
             }
             is NmeaParser.Result.Ok -> {
-                state = state.copy(sentences = state.sentences + 1)
+                state = state.copy(sentences = state.sentences + 1, format = "NMEA")
                 return apply(r.sentence)
             }
         }
+    }
+
+    private fun applyLlh(l: LlhParser.Llh): Epoch? {
+        val now = clock()
+        state = state.copy(
+            sentences = state.sentences + 1,
+            format = "LLH",
+            lat = l.lat, lon = l.lon,
+            altitudeMsl = null,          // LLH no trae cota sobre el geoide
+            geoidSeparation = null,
+            ellipsoidalHeightRaw = l.ellipsoidalHeight,
+            solution = l.solution,
+            satellites = l.satellites,
+            hrms = l.hrms ?: state.hrms,
+            vrms = l.vrms ?: state.vrms,
+            diffAge = l.age,
+            utc = l.utc,
+            lastEpochMillis = now,
+        )
+        if (l.solution == SolutionType.NONE) return null
+        return Epoch(
+            lat = l.lat, lon = l.lon,
+            altitudeMsl = null,
+            ellipsoidalHeight = l.ellipsoidalHeight,
+            solution = l.solution,
+            satellites = l.satellites,
+            hrms = state.hrms, vrms = state.vrms, pdop = state.pdop,
+            timeMillis = now,
+        )
     }
 
     private fun apply(s: NmeaParser.Sentence): Epoch? {
