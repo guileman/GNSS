@@ -31,6 +31,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import com.topognss.app.ui.components.StatusChip
+import com.topognss.app.data.pointKind
+import com.topognss.app.ui.components.KindBadge
 import com.topognss.app.ui.theme.solutionColor
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -127,6 +129,9 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     var message by mutableStateOf<String?>(null)
     var lastSaved by mutableStateOf<PointEntity?>(null)
     private var job: Job? = null
+
+    /** Deja el punto como objetivo de Replanteo (la pantalla de replanteo lo toma de acá). */
+    fun stake(p: PointEntity) { topo.stakeTarget.value = p.id }
 
     fun refreshName(p: ProjectEntity?) {
         if (p == null) return
@@ -271,6 +276,9 @@ fun SurveyScreen(
     val all by vm.all.collectAsState()
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var panelOpen by rememberSaveable { mutableStateOf(false) }
+    // Punto tocado en el mapa: muestra su ficha con el atajo Replantear
+    var tappedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val tapped = all.firstOrNull { it.id == tappedId }
 
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -293,6 +301,7 @@ fun SurveyScreen(
                 points = all.map { it.toMapPoint() },
                 me = s.toMapMe(),
                 fitKey = p.id to all.size,
+                onPointTap = { id -> tappedId = id; panelOpen = false },
             )
 
             // Proyecto activo (toca para cambiar) + Ajustes, arriba a la izquierda
@@ -345,7 +354,7 @@ fun SurveyScreen(
                     )
                     if (!panelOpen) {
                         FloatingActionButton(
-                            onClick = { panelOpen = true },
+                            onClick = { panelOpen = true; tappedId = null },
                             modifier = Modifier.align(Alignment.BottomCenter),
                             shape = CircleShape,
                             containerColor = Color(0xFF263238),
@@ -367,6 +376,45 @@ fun SurveyScreen(
                     else StatusChip("Sin posición", container = Color(0xFF546E7A))
                     StatusChip("H ${s.hrms.f(3)}  V ${s.vrms.f(3)}")
                     StatusChip("Ht ${parseNum(vm.antennaHeight).f(3)}")
+                }
+            }
+        }
+
+        if (tapped != null && !panelOpen) {
+            Surface(
+                shadowElevation = 8.dp,
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(tapped.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                                KindBadge(tapped.pointKind())
+                            }
+                            if (tapped.code.isNotBlank()) {
+                                Text(tapped.code, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(
+                                "E ${tapped.easting.f(3)}  N ${tapped.northing.f(3)}  H ${tapped.elevation.f(3)}",
+                                fontFamily = FontFamily.Monospace, fontSize = 11.sp, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = { tappedId = null }) { Icon(Icons.Filled.Close, contentDescription = "Cerrar") }
+                    }
+                    Button(
+                        onClick = { vm.stake(tapped); tappedId = null; onOpenStakeout() },
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) {
+                        Icon(Icons.Filled.NearMe, contentDescription = null, Modifier.size(20.dp))
+                        Text("  Replantear", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
