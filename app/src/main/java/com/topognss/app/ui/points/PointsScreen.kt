@@ -23,9 +23,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import com.topognss.app.ui.components.ScreenHeader
+import com.topognss.app.ui.components.EmptyState
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -181,14 +186,13 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsViewModel = viewModel()) {
+fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, onBack: () -> Unit, vm: PointsViewModel = viewModel()) {
     val context = LocalContext.current
     val project by vm.project.collectAsState()
     val all by vm.points.collectAsState()
     var detail by remember { mutableStateOf<PointEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
-    var showMap by rememberSaveable { mutableStateOf(false) }
-    val gnss by vm.gnss.collectAsState()
+    var menuOpen by remember { mutableStateOf(false) }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { vm.importFile(it, queryDisplayName(context, it)) }
     }
@@ -199,40 +203,60 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, vm: PointsView
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(p.name, style = MaterialTheme.typography.titleMedium)
-                    Text(p.crs().describe(), style = MaterialTheme.typography.bodySmall)
+            ScreenHeader(title = "Puntos", onBack = onBack) {
+                // Importar / exportar quedan en un menú en vez de tres botones apretados en la cabecera
+                Box {
+                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Más opciones") }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Importar DXF / KML") },
+                            onClick = { menuOpen = false; importLauncher.launch(arrayOf("*/*")) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Exportar CSV") },
+                            onClick = {
+                                menuOpen = false
+                                vm.exportCsv()?.let { context.startActivity(Intent.createChooser(it, "Exportar CSV")) }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Reporte de replanteo (PDF)") },
+                            onClick = {
+                                menuOpen = false
+                                vm.exportStakeoutPdf()?.let { context.startActivity(Intent.createChooser(it, "Reporte de replanteo")) }
+                            },
+                        )
+                    }
                 }
-                TextButton(onClick = onOpenProjects) { Text("Proyectos") }
-                OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) { Text("Importar") }
-                OutlinedButton(onClick = {
-                    vm.exportCsv()?.let { context.startActivity(Intent.createChooser(it, "Exportar CSV")) }
-                }) { Text("CSV") }
-                OutlinedButton(onClick = {
-                    vm.exportStakeoutPdf()?.let { context.startActivity(Intent.createChooser(it, "Reporte de replanteo")) }
-                }) { Text("PDF") }
             }
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = showMap, onClick = { showMap = !showMap },
-                    label = { Text(if (showMap) "Ver lista" else "Ver mapa") })
-                FilterChip(selected = vm.filter == null, onClick = { vm.filter = null }, label = { Text("Todos (${all.size})") })
-                PointKind.entries.forEach { k ->
-                    val c = all.count { it.kind == k.name }
-                    FilterChip(selected = vm.filter == k, onClick = { vm.filter = k }, label = { Text("${k.label} ($c)") })
+            Text(
+                "${p.name} · ${p.crs().describe()}",
+                Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            if (all.isNotEmpty()) {
+                // Sólo los tipos que existen, para no llenar la fila de filtros vacíos
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FilterChip(selected = vm.filter == null, onClick = { vm.filter = null }, label = { Text("Todos (${all.size})", maxLines = 1) })
+                    PointKind.entries.forEach { k ->
+                        val c = all.count { it.kind == k.name }
+                        if (c > 0 || vm.filter == k) {
+                            FilterChip(selected = vm.filter == k, onClick = { vm.filter = k }, label = { Text("${k.label} ($c)", maxLines = 1) })
+                        }
+                    }
                 }
             }
-            vm.message?.let { Text(it, Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.secondary) }
-            if (showMap) {
-                TopoMap(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    points = shown.map { it.toMapPoint() },
-                    me = gnss.toMapMe(),
-                    fitKey = vm.filter to shown.size,
-                    onPointTap = { id -> detail = shown.firstOrNull { it.id == id } },
+            vm.message?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondary) }
+            if (shown.isEmpty()) {
+                EmptyState(
+                    title = if (all.isEmpty()) "Todavía no hay puntos" else "No hay puntos de este tipo",
+                    message = if (all.isEmpty()) "Medí un punto desde Levantamiento, importá un archivo o agregá uno por coordenadas con el botón +."
+                    else "Probá con otro filtro.",
+                    modifier = Modifier.weight(1f),
                 )
             } else LazyColumn(Modifier.weight(1f)) {
                 items(shown, key = { it.id }) { pt ->

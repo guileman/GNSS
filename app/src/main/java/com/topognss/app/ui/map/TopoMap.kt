@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -359,7 +360,7 @@ private fun LayerSelector(current: MapLayer, onSelect: (MapLayer) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         SmallFloatingActionButton(onClick = { open = true }) {
-            Text(current.label.take(3), style = MaterialTheme.typography.labelMedium)
+            Icon(Icons.Filled.Layers, contentDescription = "Capas del mapa", Modifier.size(20.dp))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             MapLayer.entries.forEach { l ->

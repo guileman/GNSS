@@ -16,6 +16,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -82,6 +86,9 @@ class ConnectionViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _paired = MutableStateFlow<List<PairedDevice>>(emptyList())
     val paired: StateFlow<List<PairedDevice>> = _paired
+    private val _btEnabled = MutableStateFlow(true)
+    /** false si el Bluetooth del teléfono está apagado (la pantalla ofrece activarlo). */
+    val btEnabled: StateFlow<Boolean> = _btEnabled
 
     var mode by mutableStateOf(runCatching { ConnMode.valueOf(prefs.lastMode) }.getOrDefault(ConnMode.BLUETOOTH))
     var host by mutableStateOf(prefs.lastHost)
@@ -101,7 +108,8 @@ class ConnectionViewModel(app: Application) : AndroidViewModel(app) {
         val adapter = btAdapter
         if (adapter == null) { message = "Este equipo no tiene Bluetooth"; return }
         if (!hasBtPermission()) { message = "Falta el permiso 'Dispositivos cercanos' (Bluetooth)"; return }
-        if (!adapter.isEnabled) message = "Activá el Bluetooth"
+        _btEnabled.value = adapter.isEnabled
+        if (!adapter.isEnabled) { _paired.value = emptyList(); return }
         _paired.value = runCatching {
             adapter.bondedDevices.orEmpty().map { d ->
                 val name = d.name ?: d.address
@@ -149,17 +157,22 @@ class ConnectionViewModel(app: Application) : AndroidViewModel(app) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
     val context = LocalContext.current
     val s by vm.gnss.collectAsState()
     val raw by vm.raw.collectAsState()
     val paired by vm.paired.collectAsState()
+    val btEnabled by vm.btEnabled.collectAsState()
+    var details by rememberSaveable { mutableStateOf(false) }
     val connected = s.connection == ConnectionStatus.CONNECTED || s.connection == ConnectionStatus.CONNECTING ||
         s.connection == ConnectionStatus.ERROR
 
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        vm.refreshPaired()
+    }
+    val enableBtLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         vm.refreshPaired()
     }
     LaunchedEffect(vm.mode) {
@@ -170,18 +183,36 @@ fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
             }
         }
     }
+    // Al volver de los ajustes de Android (emparejar / encender Bluetooth) se actualiza la lista sola
+    LifecycleResumeEffect(vm.mode) {
+        if (vm.mode == ConnMode.BLUETOOTH && vm.hasBtPermission()) vm.refreshPaired()
+        onPauseOrDispose { }
+    }
+
+    val connLabel = when (s.connection) {
+        ConnectionStatus.DISCONNECTED -> "Desconectado"
+        ConnectionStatus.CONNECTING -> "Conectando…"
+        ConnectionStatus.CONNECTED -> "Conectado"
+        ConnectionStatus.ERROR -> "Error"
+    }
+    val canConnect = when (vm.mode) {
+        ConnMode.BLUETOOTH -> btEnabled && vm.selectedAddress != null && paired.any { it.address == vm.selectedAddress }
+        else -> true
+    }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        Text("Receptor", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 4.dp))
         SectionTitle("Tipo de conexión")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // FlowRow: los tipos pasan a la línea siguiente en vez de quedar cortados al borde de la pantalla
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             ConnMode.entries.forEach { m ->
                 FilterChip(
                     selected = vm.mode == m,
                     onClick = { if (!connected) vm.mode = m },
-                    label = { Text(m.label) },
+                    label = { Text(m.label, maxLines = 1, softWrap = false) },
                     enabled = !connected,
                 )
             }
@@ -190,34 +221,47 @@ fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
         when (vm.mode) {
             ConnMode.BLUETOOTH -> {
                 Text(
-                    "En el RS2 (Emlid Flow → Settings → Position output) configurá Output 1 = Bluetooth, formato NMEA. " +
-                        "Emparejá el teléfono con el receptor desde los ajustes de Android.",
+                    "En Emlid Flow elegí Output 1 = Bluetooth, formato NMEA, y emparejá el teléfono desde los ajustes de Android.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { vm.refreshPaired() }) { Text("Actualizar lista") }
-                    TextButton(onClick = {
-                        runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
-                    }) { Text("Emparejar…") }
-                }
-                if (paired.isEmpty()) Text("No hay dispositivos emparejados.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                paired.forEach { d ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !connected) { vm.selectedAddress = d.address },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = vm.selectedAddress == d.address, onClick = { vm.selectedAddress = d.address }, enabled = !connected)
-                        Column {
-                            Text(d.name, fontWeight = if (d.looksLikeReach) FontWeight.Bold else FontWeight.Normal)
-                            Text(d.address, style = MaterialTheme.typography.bodySmall)
+                if (!btEnabled) {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("El Bluetooth está apagado.")
+                            Button(onClick = {
+                                runCatching {
+                                    enableBtLauncher.launch(Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE))
+                                }
+                            }) { Text("Activar Bluetooth") }
+                        }
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(onClick = { vm.refreshPaired() }) { Text("Actualizar", maxLines = 1, softWrap = false) }
+                        TextButton(onClick = {
+                            runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
+                        }) { Text("Emparejar…", maxLines = 1, softWrap = false) }
+                    }
+                    if (paired.isEmpty()) {
+                        Text("No hay dispositivos emparejados.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    paired.forEach { d ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable(enabled = !connected) { vm.selectedAddress = d.address },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = vm.selectedAddress == d.address, onClick = { vm.selectedAddress = d.address }, enabled = !connected)
+                            Column {
+                                Text(d.name, fontWeight = if (d.looksLikeReach) FontWeight.Bold else FontWeight.Normal)
+                                Text(d.address, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
             }
             ConnMode.TCP_CLIENT -> {
                 Text(
-                    "El RS2 actúa como servidor TCP (Position output → TCP, rol servidor). " +
-                        "Con el hotspot del receptor la IP es 192.168.42.1; el puerto es el configurado en Flow.",
+                    "El RS2 actúa como servidor TCP. Con su hotspot la IP es 192.168.42.1; el puerto es el de Flow.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -228,7 +272,7 @@ fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
                         enabled = !connected, modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
-                TextButton(onClick = { vm.host = "192.168.42.1" }, enabled = !connected) { Text("Usar hotspot del RS2 (192.168.42.1)") }
+                TextButton(onClick = { vm.host = "192.168.42.1" }, enabled = !connected) { Text("Usar hotspot del RS2") }
             }
             ConnMode.TCP_SERVER, ConnMode.UDP -> {
                 val ip = remember(vm.mode) { vm.phoneWifiIp() }
@@ -247,7 +291,17 @@ fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
         vm.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         if (!connected) {
-            Button(onClick = { vm.connect() }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Conectar") }
+            Button(
+                onClick = { vm.connect() },
+                enabled = canConnect,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text("Conectar") }
+            if (vm.mode == ConnMode.BLUETOOTH && btEnabled && !canConnect) {
+                Text(
+                    "Elegí un dispositivo emparejado para conectar.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
             Button(
                 onClick = { vm.disconnect() },
@@ -259,35 +313,41 @@ fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
                 SectionTitle("Estado del receptor")
-                KeyValue("Conexión", s.connection.name + if (s.connectionLabel.isNotEmpty()) " · ${s.connectionLabel}" else "")
+                KeyValue("Conexión", connLabel + if (s.connectionLabel.isNotEmpty()) " · ${s.connectionLabel}" else "", mono = false)
                 s.errorMessage?.let { KeyValue("Último error", it, mono = false) }
                 KeyValue("Solución", s.solution.label)
                 KeyValue("Latitud", s.lat.f(9))
                 KeyValue("Longitud", s.lon.f(9))
-                KeyValue("Altura ortométrica (MSL)", s.altitudeMsl.f(3) + " m")
-                KeyValue("Ondulación geoidal N", s.geoidSeparation.f(3) + " m")
-                KeyValue("Altura elipsoidal", s.ellipsoidalHeight.f(3) + " m")
+                KeyValue("Altura (MSL)", s.altitudeMsl.f(3) + " m")
                 KeyValue("Satélites", s.satellites?.toString() ?: "—")
-                KeyValue("HDOP / PDOP / VDOP", "${s.hdop.f(1)} / ${s.pdop.f(1)} / ${s.vdop.f(1)}")
                 KeyValue("HRMS / VRMS", "${s.hrms.f(3)} / ${s.vrms.f(3)} m")
                 KeyValue("Edad corrección", s.diffAge.f(1) + " s")
-                KeyValue("Velocidad / rumbo", "${s.speedMs.f(2)} m/s · ${s.courseDeg.f(1)}°")
-                KeyValue("Tramas OK / erróneas", "${s.sentences} / ${s.badSentences}")
+                if (details) {
+                    KeyValue("Ondulación geoidal N", s.geoidSeparation.f(3) + " m")
+                    KeyValue("Altura elipsoidal", s.ellipsoidalHeight.f(3) + " m")
+                    KeyValue("HDOP / PDOP / VDOP", "${s.hdop.f(1)} / ${s.pdop.f(1)} / ${s.vdop.f(1)}")
+                    KeyValue("Velocidad / rumbo", "${s.speedMs.f(2)} m/s · ${s.courseDeg.f(1)}°")
+                    KeyValue("Tramas OK / erróneas", "${s.sentences} / ${s.badSentences}")
+                }
                 if (s.hrms == null && s.connection == ConnectionStatus.CONNECTED) {
                     Text(
                         "Sin HRMS/VRMS: habilitá la sentencia GST en la salida NMEA del receptor.",
                         color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall,
                     )
                 }
+                TextButton(onClick = { details = !details }) { Text(if (details) "Menos detalles" else "Más detalles") }
             }
         }
 
-        SectionTitle("Consola NMEA")
-        Column(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp)
-        ) {
-            if (raw.isEmpty()) Text("(sin datos)", fontSize = 11.sp)
-            raw.takeLast(25).forEach { Text(it, fontFamily = FontFamily.Monospace, fontSize = 10.sp, maxLines = 1) }
+        // La consola NMEA sólo sirve para diagnosticar: queda oculta salvo que se pidan los detalles
+        if (details) {
+            SectionTitle("Consola NMEA")
+            Column(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp)
+            ) {
+                if (raw.isEmpty()) Text("(sin datos)", fontSize = 11.sp)
+                raw.takeLast(25).forEach { Text(it, fontFamily = FontFamily.Monospace, fontSize = 10.sp, maxLines = 1) }
+            }
         }
     }
 }

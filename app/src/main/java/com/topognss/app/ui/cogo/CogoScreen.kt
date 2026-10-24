@@ -19,6 +19,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -66,6 +67,7 @@ import com.topognss.app.ui.components.KeyValue
 import com.topognss.app.ui.components.NoProjectCard
 import com.topognss.app.ui.components.NumberField
 import com.topognss.app.ui.components.OrderedPointSelector
+import com.topognss.app.ui.components.ScreenHeader
 import com.topognss.app.ui.components.SectionTitle
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
@@ -289,7 +291,7 @@ fun PointEntity.toP3() = P3(easting, northing, elevation)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
+fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel = viewModel()) {
     val project by vm.project.collectAsState()
     val all by vm.points.collectAsState()
     var tab by rememberSaveable { mutableStateOf(0) }
@@ -301,12 +303,12 @@ fun CogoScreen(onOpenProjects: () -> Unit, vm: CogoViewModel = viewModel()) {
     val sel = vm.selectedPoints(all)
 
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Medición") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Crear puntos") })
-            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Resección") })
-            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Curva") })
-            Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("Poligonal") })
+        ScreenHeader(title = "Cálculo", onBack = onBack)
+        // Cinco herramientas: pestañas desplazables y de una sola línea (antes se partían en medio de la palabra)
+        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
+            listOf("Medición", "Crear puntos", "Resección", "Curva", "Poligonal").forEachIndexed { i, label ->
+                Tab(selected = tab == i, onClick = { tab = i }, text = { Text(label, maxLines = 1, softWrap = false) })
+            }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
