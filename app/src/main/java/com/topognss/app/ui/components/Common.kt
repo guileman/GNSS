@@ -276,9 +276,9 @@ fun NumberField(
 }
 
 @Composable
-fun SectionTitle(text: String) {
+fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+        modifier = modifier.padding(top = 8.dp, bottom = 4.dp))
 }
 
 @Composable

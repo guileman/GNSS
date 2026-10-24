@@ -50,12 +50,12 @@ import com.topognss.app.ui.theme.ThemeMode
 import com.topognss.app.ui.theme.TopoTheme
 
 /**
- * Navegación estilo Emlid Flow: sólo tres pestañas (Receptor, Levantamiento, Proyectos).
+ * Navegación estilo Emlid Flow: sólo tres pestañas (Receptores, Levantamiento, Proyectos).
  * Puntos, Cálculo, Replanteo y Plomada se abren desde Levantamiento / Proyectos como pantallas
  * secundarias con su flecha de volver.
  */
 private enum class Dest(val route: String, val label: String, val icon: ImageVector) {
-    CONNECTION("connection", "Receptor", Icons.Filled.SettingsInputAntenna),
+    CONNECTION("connection", "Receptores", Icons.Filled.SettingsInputAntenna),
     SURVEY("survey", "Levantamiento", Icons.Filled.Map),
     PROJECTS("projects", "Proyectos", Icons.Filled.Folder),
 }

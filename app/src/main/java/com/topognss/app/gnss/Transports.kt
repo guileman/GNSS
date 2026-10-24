@@ -148,8 +148,9 @@ class TcpClientTransport(
     private val host: String,
     private val port: Int,
     private val cm: ConnectivityManager?,
+    networkName: String? = null,
 ) : GnssTransport {
-    override val label = "TCP cliente · $host:$port"
+    override val label = if (networkName != null) "Wi-Fi · $networkName" else "TCP cliente · $host:$port"
     @Volatile private var socket: Socket? = null
 
     override fun run(onConnected: () -> Unit, onLine: (String) -> Unit) {
