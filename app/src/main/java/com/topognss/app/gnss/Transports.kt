@@ -192,7 +192,11 @@ class TcpClientTransport(
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { found = network; latch.countDown() }
         }
-        val req = NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build()
+        // Sin exigir INTERNET: por defecto el pedido la incluye y el hotspot del RS2 podría no coincidir
+        val req = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
         try {
             c.requestNetwork(req, cb)
             netCallback = cb

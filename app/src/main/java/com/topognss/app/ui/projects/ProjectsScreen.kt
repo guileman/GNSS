@@ -16,8 +16,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -44,8 +42,8 @@ import com.topognss.app.data.nomenclaturaCatastral
 import com.topognss.app.geo.CrsType
 import com.topognss.app.geo.ProjectCrs
 import com.topognss.app.ui.components.NumberField
-import com.topognss.app.ui.theme.ThemeMode
 import com.topognss.app.ui.components.EmptyState
+import com.topognss.app.ui.components.SettingsButton
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
 import com.topognss.app.ui.hold
@@ -59,9 +57,6 @@ class ProjectsViewModel(app: Application) : AndroidViewModel(app) {
     val gnss = topo.gnss.state
 
     fun select(p: ProjectEntity) = topo.prefs.setActiveProject(p.id)
-
-    val themeMode = topo.prefs.themeMode
-    fun setTheme(name: String) = topo.prefs.setThemeMode(name)
 
     fun save(existing: ProjectEntity?, draft: ProjectEntity) = viewModelScope.launch {
         if (existing == null) {
@@ -82,10 +77,9 @@ class ProjectsViewModel(app: Application) : AndroidViewModel(app) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProjectsScreen(onDone: () -> Unit, onOpenPlumb: () -> Unit, vm: ProjectsViewModel = viewModel()) {
+fun ProjectsScreen(onDone: () -> Unit, onOpenSettings: () -> Unit, vm: ProjectsViewModel = viewModel()) {
     val list by vm.projects.collectAsState()
     val active by vm.activeId.collectAsState()
-    val theme by vm.themeMode.collectAsState()
     var editing by remember { mutableStateOf<ProjectEntity?>(null) }
     var creating by remember { mutableStateOf(false) }
 
@@ -93,6 +87,7 @@ fun ProjectsScreen(onDone: () -> Unit, onOpenPlumb: () -> Unit, vm: ProjectsView
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Proyectos", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             Button(onClick = { creating = true }) { Text("Nuevo", maxLines = 1, softWrap = false) }
+            SettingsButton(onOpenSettings)
         }
         if (list.isEmpty()) {
             EmptyState(
@@ -123,23 +118,6 @@ fun ProjectsScreen(onDone: () -> Unit, onOpenPlumb: () -> Unit, vm: ProjectsView
             }
         }
 
-        // Ajustes de la app (antes escondidos en el menú ⋮)
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Text("Ajustes", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        Row(
-            Modifier.padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text("Tema", Modifier.padding(end = 4.dp))
-            listOf(ThemeMode.SYSTEM to "Sistema", ThemeMode.LIGHT to "Claro", ThemeMode.DARK to "Oscuro").forEach { (m, label) ->
-                FilterChip(
-                    selected = theme == m.name, onClick = { vm.setTheme(m.name) },
-                    label = { Text(label, maxLines = 1, softWrap = false) },
-                )
-            }
-        }
-        TextButton(onClick = onOpenPlumb) { Text("Plomada virtual") }
     }
 
     if (creating || editing != null) {

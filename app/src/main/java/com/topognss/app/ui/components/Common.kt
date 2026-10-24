@@ -23,6 +23,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -149,6 +150,14 @@ fun ScreenHeader(
             maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
         actions()
+    }
+}
+
+/** Engranaje que abre los Ajustes generales de la app (arriba a la derecha en las pestañas principales). */
+@Composable
+fun SettingsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onClick, modifier = modifier) {
+        Icon(Icons.Filled.Settings, contentDescription = "Ajustes")
     }
 }
 

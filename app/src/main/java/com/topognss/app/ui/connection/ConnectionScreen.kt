@@ -2,6 +2,7 @@ package com.topognss.app.ui.connection
 
 import android.Manifest
 import com.topognss.app.ui.components.StatusChip
+import com.topognss.app.ui.components.SettingsButton
 import com.topognss.app.ui.components.EmptyState
 import androidx.compose.material3.AlertDialog
 import android.annotation.SuppressLint
@@ -312,7 +313,7 @@ class ConnectionViewModel(app: Application) : AndroidViewModel(app) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
+fun ConnectionScreen(onOpenSettings: () -> Unit, vm: ConnectionViewModel = viewModel()) {
     val context = LocalContext.current
     val s by vm.gnss.collectAsState()
     val raw by vm.raw.collectAsState()
@@ -358,7 +359,10 @@ fun ConnectionScreen(vm: ConnectionViewModel = viewModel()) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text("Receptores", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Receptores", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            SettingsButton(onOpenSettings)
+        }
 
         if (connected) {
             // ---------------- Conectado ----------------

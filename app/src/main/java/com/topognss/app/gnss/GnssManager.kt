@@ -13,6 +13,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Dueño único de la conexión con el receptor (vive en el Application, sobrevive a la navegación).
@@ -50,16 +53,17 @@ class GnssManager {
             var backoff = 1000L
             while (isActive && transport === t) {
                 publishConnection(ConnectionStatus.CONNECTING, t.label)
-                var silent = false
-                var connectedAt = 0L
+                // El vigilante corre en otro hilo: los valores compartidos van en atómicos
+                val silent = AtomicBoolean(false)
+                val connectedAt = AtomicLong(0L)
                 // Vigilante: un enlace Bluetooth/Wi-Fi puede quedar "abierto" sin entregar nada.
                 // Si no llegan tramas por 8 s se corta y se reconecta, en vez de quedar colgado.
                 val watchdog = launch {
                     while (isActive) {
                         delay(2000)
-                        val ref = maxOf(lastLineAt, connectedAt)
-                        if (connectedAt > 0 && System.currentTimeMillis() - ref > SILENCE_MS) {
-                            silent = true
+                        val since = connectedAt.get()
+                        if (since > 0 && System.currentTimeMillis() - maxOf(lastLineAt, since) > SILENCE_MS) {
+                            silent.set(true)
                             t.close()
                             return@launch
                         }
@@ -68,17 +72,22 @@ class GnssManager {
                 try {
                     t.run(
                         onConnected = {
+                            // Si el usuario desconectó mientras se abría el enlace, se aborta (no queda una conexión "fantasma")
+                            if (transport !== t) throw IOException("Cancelado")
                             backoff = 1000L
-                            connectedAt = System.currentTimeMillis()
+                            connectedAt.set(System.currentTimeMillis())
                             publishConnection(ConnectionStatus.CONNECTED, t.label)
                         },
-                        onLine = ::onLine,
+                        onLine = { line ->
+                            if (transport !== t) throw IOException("Cancelado")
+                            onLine(line)
+                        },
                     )
                 } catch (e: Exception) {
-                    if (transport !== t) break // desconexión pedida por el usuario
+                    if (transport !== t) { t.close(); break } // desconexión pedida por el usuario
                     publishConnection(
                         ConnectionStatus.ERROR, t.label,
-                        if (silent) "El receptor no envía datos (8 s sin tramas). Revisá que la salida de posición esté en formato NMEA."
+                        if (silent.get()) "El receptor no envía datos (8 s sin tramas). Revisá que la salida de posición esté en formato NMEA."
                         else friendly(e),
                     )
                 } finally {

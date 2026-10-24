@@ -43,6 +43,7 @@ import com.topognss.app.ui.connection.ConnectionScreen
 import com.topognss.app.ui.plumb.PlumbScreen
 import com.topognss.app.ui.points.PointsScreen
 import com.topognss.app.ui.projects.ProjectsScreen
+import com.topognss.app.ui.settings.SettingsScreen
 import com.topognss.app.ui.stakeout.StakeoutScreen
 import com.topognss.app.ui.survey.SurveyScreen
 import com.topognss.app.ui.theme.LocalDarkTheme
@@ -51,8 +52,8 @@ import com.topognss.app.ui.theme.TopoTheme
 
 /**
  * Navegación estilo Emlid Flow: sólo tres pestañas (Receptores, Levantamiento, Proyectos).
- * Puntos, Cálculo, Replanteo y Plomada se abren desde Levantamiento / Proyectos como pantallas
- * secundarias con su flecha de volver.
+ * Puntos, Cálculo y Replanteo se abren desde Levantamiento; Ajustes (tema, plomada) con el engranaje
+ * de arriba. Todas son pantallas secundarias con su flecha de volver.
  */
 private enum class Dest(val route: String, val label: String, val icon: ImageVector) {
     CONNECTION("connection", "Receptores", Icons.Filled.SettingsInputAntenna),
@@ -64,6 +65,7 @@ private const val ROUTE_POINTS = "points"
 private const val ROUTE_COGO = "cogo"
 private const val ROUTE_STAKEOUT = "stakeout"
 private const val ROUTE_PLUMB = "plumb"
+private const val ROUTE_SETTINGS = "settings"
 
 /** Pantallas donde se muestra la franja de estado del receptor. */
 private val STATUS_ROUTES = setOf(Dest.SURVEY.route, ROUTE_POINTS, ROUTE_COGO, ROUTE_STAKEOUT)
@@ -143,6 +145,7 @@ private fun AppRoot(app: TopoApp) {
     ) { padding ->
         val openProjects = { nav.goTab(Dest.PROJECTS) }
         val back: () -> Unit = { nav.popBackStack() }
+        val openSettings = { nav.navigate(ROUTE_SETTINGS) { launchSingleTop = true } }
         NavHost(
             navController = nav,
             startDestination = if (app.prefs.activeProjectId.value > 0) Dest.SURVEY.route else Dest.PROJECTS.route,
@@ -151,18 +154,19 @@ private fun AppRoot(app: TopoApp) {
                 .padding(padding)
                 .then(if (showTabs) Modifier else Modifier.navigationBarsPadding()),
         ) {
-            composable(Dest.CONNECTION.route) { ConnectionScreen() }
+            composable(Dest.CONNECTION.route) { ConnectionScreen(onOpenSettings = openSettings) }
             composable(Dest.SURVEY.route) {
                 SurveyScreen(
                     onOpenProjects = openProjects,
                     onOpenPoints = { nav.navigate(ROUTE_POINTS) { launchSingleTop = true } },
                     onOpenCogo = { nav.navigate(ROUTE_COGO) { launchSingleTop = true } },
+                    onOpenSettings = openSettings,
                 )
             }
             composable(Dest.PROJECTS.route) {
                 ProjectsScreen(
                     onDone = { nav.goTab(Dest.SURVEY) },
-                    onOpenPlumb = { nav.navigate(ROUTE_PLUMB) { launchSingleTop = true } },
+                    onOpenSettings = openSettings,
                 )
             }
             composable(ROUTE_POINTS) {
@@ -175,6 +179,9 @@ private fun AppRoot(app: TopoApp) {
             composable(ROUTE_COGO) { CogoScreen(onOpenProjects = openProjects, onBack = back) }
             composable(ROUTE_STAKEOUT) { StakeoutScreen(onOpenProjects = openProjects, onBack = back) }
             composable(ROUTE_PLUMB) { PlumbScreen() }
+            composable(ROUTE_SETTINGS) {
+                SettingsScreen(onBack = back, onOpenPlumb = { nav.navigate(ROUTE_PLUMB) { launchSingleTop = true } })
+            }
         }
     }
 }

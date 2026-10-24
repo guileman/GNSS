@@ -261,6 +261,7 @@ fun SurveyScreen(
     onOpenProjects: () -> Unit,
     onOpenPoints: () -> Unit,
     onOpenCogo: () -> Unit,
+    onOpenSettings: () -> Unit,
     vm: SurveyViewModel = viewModel(),
 ) {
     val project by vm.project.collectAsState()
@@ -292,24 +293,37 @@ fun SurveyScreen(
                 fitKey = p.id to all.size,
             )
 
-            // Proyecto activo (toca para cambiar)
-            Surface(
-                onClick = onOpenProjects,
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-                shape = RoundedCornerShape(24.dp),
-                shadowElevation = 4.dp,
-                color = MaterialTheme.colorScheme.surface,
+            // Proyecto activo (toca para cambiar) + Ajustes, arriba a la izquierda
+            Row(
+                Modifier.align(Alignment.TopStart).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(
-                    Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                Surface(
+                    onClick = onOpenProjects,
+                    shape = RoundedCornerShape(24.dp),
+                    shadowElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.surface,
                 ) {
-                    Icon(Icons.Filled.Folder, contentDescription = null, Modifier.size(18.dp))
-                    Text(
-                        p.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 170.dp),
-                    )
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(Icons.Filled.Folder, contentDescription = null, Modifier.size(18.dp))
+                        Text(
+                            p.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 170.dp),
+                        )
+                    }
+                }
+                Surface(
+                    onClick = onOpenSettings,
+                    shape = CircleShape,
+                    shadowElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                ) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Ajustes", Modifier.padding(10.dp).size(22.dp))
                 }
             }
 
