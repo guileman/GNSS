@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.AlertDialog
@@ -253,7 +254,7 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
 
 /**
  * Levantamiento (estilo Emlid Flow): el mapa ocupa toda la pantalla; "+" abre el panel para medir.
- * Atajos en el mapa: regla (cálculo y mediciones) y lista (puntos del proyecto).
+ * Atajos con nombre en el mapa: Cálculo y Puntos a la izquierda, Replantear a la derecha.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -261,6 +262,7 @@ fun SurveyScreen(
     onOpenProjects: () -> Unit,
     onOpenPoints: () -> Unit,
     onOpenCogo: () -> Unit,
+    onOpenStakeout: () -> Unit,
     onOpenSettings: () -> Unit,
     vm: SurveyViewModel = viewModel(),
 ) {
@@ -334,9 +336,13 @@ fun SurveyScreen(
             ) {
                 Box(Modifier.fillMaxWidth()) {
                     Column(Modifier.align(Alignment.BottomStart), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        MapRoundButton(Icons.Filled.Straighten, "Cálculo y mediciones", onOpenCogo)
-                        MapRoundButton(Icons.AutoMirrored.Filled.List, "Puntos del proyecto", onOpenPoints)
+                        MapRoundButton(Icons.Filled.Straighten, "Cálculo", onOpenCogo)
+                        MapRoundButton(Icons.AutoMirrored.Filled.List, "Puntos", onOpenPoints)
                     }
+                    MapRoundButton(
+                        Icons.Filled.NearMe, "Replantear", onOpenStakeout,
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                    )
                     if (!panelOpen) {
                         FloatingActionButton(
                             onClick = { panelOpen = true },
@@ -464,11 +470,20 @@ fun SurveyScreen(
 }
 
 @Composable
-private fun MapRoundButton(icon: ImageVector, description: String, onClick: () -> Unit) {
-    FloatingActionButton(
-        onClick = onClick,
-        shape = CircleShape,
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    ) { Icon(icon, contentDescription = description) }
+private fun MapRoundButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    // Botón redondo con su nombre debajo: los íconos solos no se entendían (p. ej. no se encontraba Replanteo)
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        FloatingActionButton(
+            onClick = onClick,
+            shape = CircleShape,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) { Icon(icon, contentDescription = label) }
+        Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)) {
+            Text(
+                label, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
+    }
 }

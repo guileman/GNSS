@@ -160,6 +160,7 @@ private fun AppRoot(app: TopoApp) {
                     onOpenProjects = openProjects,
                     onOpenPoints = { nav.navigate(ROUTE_POINTS) { launchSingleTop = true } },
                     onOpenCogo = { nav.navigate(ROUTE_COGO) { launchSingleTop = true } },
+                    onOpenStakeout = { nav.navigate(ROUTE_STAKEOUT) { launchSingleTop = true } },
                     onOpenSettings = openSettings,
                 )
             }
