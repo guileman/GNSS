@@ -92,6 +92,12 @@ app/src/test/                  Tests JVM de geodesia, NMEA y COGO
 - **GitHub Actions**: cada push a `main` corre los tests y genera el APK. Descargalo desde la pestaña *Actions → ejecución → Artifacts → TopoGNSS-apk*. Si empujás un tag `v1.0.0`, además se publica como Release.
 - **Local**: `./gradlew assembleRelease` (JDK 17, Android SDK 35).
 
+### Página de descarga
+
+`site/index.html` es una página estática (publicada con GitHub Pages) que muestra siempre el último Release: botón de descarga del APK, código QR, notas de versión y pasos de instalación. Cada push a `main` compila, publica el Release `v1.0.<n>` y la página lo toma sola.
+
+Activación (una sola vez): *Settings → Pages → Build and deployment → Source: GitHub Actions*. La dirección queda en `https://guileman.github.io/GNSS/`.
+
 ### Firma del APK
 
 Sin configuración, el APK de release se firma con una clave debug generada en cada ejecución. Es instalable, pero cada nueva versión requiere desinstalar la anterior. Para actualizaciones sin desinstalar, creá un keystore y cargá estos secretos en *Settings → Secrets and variables → Actions*:
