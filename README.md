@@ -29,6 +29,21 @@ Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para to
 - No requiere clave de API. Las imágenes satelitales son de Esri y su uso está sujeto a sus términos (atribución visible en el mapa).
 - **Tema**: menú ⋮ de la barra superior → Según el sistema / Claro / Oscuro. En oscuro, la capa de calles se muestra invertida para uso nocturno.
 
+### Google Maps (opcional)
+
+Con una clave de **Maps SDK for Android** el mapa usa Google Maps (calles, satélite, híbrido, relieve); sin clave, la app sigue con OpenStreetMap/Esri. Se elige en **Ajustes → Mapa**.
+
+1. En Google Cloud Console: crear un proyecto, habilitar **Maps SDK for Android** y crear una **clave de API** (restringida a esa API).
+2. En GitHub: Settings → Secrets and variables → Actions → nuevo secreto `MAPS_API_KEY` con la clave. En una compilación local: `MAPS_API_KEY=...` en `local.properties`.
+3. Si se restringe la clave por app Android, usar el paquete `com.topognss.app` y el SHA-1 del keystore de release (sin keystore propio, cada compilación de CI usa una clave debug distinta).
+
+## Importar y exportar puntos
+
+En **Puntos → ⋮**:
+- **Importar** CSV/TXT (separador y encabezado detectados; sin encabezado se elige el orden P,E,N,Z,D, P,N,E,Z,D, etc.; planas o geográficas), DXF y KML/KMZ.
+- **Exportar DXF** (R12): POINT 3D por capa de tipo (PUNTOS_RELEVADO, PUNTOS_COGO…) y etiquetas TEXT en las capas NOMBRE, DESCRIPCION y TIPO.
+- **Exportar CSV** y **reporte de replanteo en PDF**.
+
 ## Sistemas de coordenadas
 
 Cada proyecto define su plano de proyección. La proyección Transversa de Mercator usa las series de Krüger de orden 6 y está verificada contra PROJ (diferencias < 0,1 mm):
