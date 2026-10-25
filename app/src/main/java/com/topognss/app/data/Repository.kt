@@ -26,6 +26,9 @@ class TopoRepository(private val db: AppDatabase) {
     suspend fun deletePoint(p: PointEntity) = points.delete(p)
     suspend fun updatePoint(p: PointEntity) = points.update(p)
 
+    /** Guarda (o borra, con null) la ruta de la foto georreferenciada de un punto. */
+    suspend fun setPhoto(p: PointEntity, path: String?) = points.update(p.copy(photoPath = path))
+
     /**
      * Próximo nombre libre con prefijo: P001, P002… Busca el mayor sufijo numérico existente.
      * Si el usuario escribió "B7", el siguiente será "B8" (respeta el ancho de dígitos).
@@ -70,6 +73,7 @@ class TopoRepository(private val db: AppDatabase) {
         fun toCsv(project: ProjectEntity, list: List<PointEntity>): String {
             val sb = StringBuilder()
             sb.append("# Proyecto: ${project.name} · CRS: ${project.crs().describe()}\n")
+            project.nomenclaturaCatastral().takeIf { it.isNotBlank() }?.let { sb.append("# Nomenclatura catastral: $it\n") }
             sb.append("Nombre,Este,Norte,Cota,Codigo,Tipo,Latitud,Longitud,AltElipsoidal,Solucion,HRMS,VRMS,PDOP,Sats,Epocas,Nota\n")
             fun d(v: Double?, dec: Int) = v?.let { String.format(Locale.US, "%.${dec}f", it) } ?: ""
             for (p in list) {
@@ -112,6 +116,14 @@ class AppPrefs(context: Context) {
     fun setMapLayer(layer: String) {
         sp.edit().putString("mapLayer", layer).apply()
         _mapLayer.value = layer
+    }
+
+    /** Proveedor del mapa base: "GOOGLE" (si hay clave de API) u "OSM" (OpenStreetMap/Esri, funciona sin Internet). */
+    private val _mapProvider = MutableStateFlow(sp.getString("mapProvider", "GOOGLE") ?: "GOOGLE")
+    val mapProvider: StateFlow<String> = _mapProvider
+    fun setMapProvider(p: String) {
+        sp.edit().putString("mapProvider", p).apply()
+        _mapProvider.value = p
     }
 
     var lastHost: String

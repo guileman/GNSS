@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,7 +21,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -36,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -69,51 +76,105 @@ fun rememberNow(periodMs: Long = 1000): Long {
 }
 
 /**
- * Barra de estado GNSS persistente (se muestra arriba en todas las pantallas).
- * Verde = FIX, amarillo = FLOAT, naranja = DGPS, rojo = SINGLE / sin datos / desconectado.
+ * Franja de estado GNSS (estilo Emlid Flow): una sola línea delgada.
+ * Desconectado: "Sin receptor conectado". Conectado: punto de color de la solución, y SAT / H / V.
+ * Verde = FIX, amarillo = FLOAT, naranja = DGPS, rojo = SINGLE / sin datos. El fondo lo pone quien la usa.
  */
 @Composable
 fun GnssStatusBar(s: GnssState, onClick: () -> Unit) {
     val now = rememberNow()
     val stale = s.connection == ConnectionStatus.CONNECTED && s.isStale(now)
     val color = solutionColor(s, stale)
+    val live = s.connection == ConnectionStatus.CONNECTED && !stale
     val label = when {
-        s.connection == ConnectionStatus.CONNECTING -> "CONECTANDO…"
-        s.connection == ConnectionStatus.ERROR -> "ERROR · reintentando"
-        s.connection != ConnectionStatus.CONNECTED -> "DESCONECTADO"
-        stale -> "SIN DATOS"
+        s.connection == ConnectionStatus.CONNECTING -> "Conectando…"
+        s.connection == ConnectionStatus.ERROR -> "Error · reintentando"
+        s.connection != ConnectionStatus.CONNECTED -> "Sin receptor conectado"
+        stale -> "Sin datos del receptor"
         else -> s.solution.label
     }
     Row(
         Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 14.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            Modifier
-                .background(color, RoundedCornerShape(6.dp))
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-        ) {
-            Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        }
-        if (s.connection == ConnectionStatus.CONNECTED && !stale) {
+        Box(Modifier.size(10.dp).background(color, CircleShape))
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.weight(1f))
+        if (live) {
             Metric("SAT", s.satellites?.toString() ?: "—")
             Metric("H", s.hrms.f(3))
             Metric("V", s.vrms.f(3))
-            Metric("PDOP", s.pdop.f(1))
-            s.diffAge?.let { Metric("AGE", it.f(0) + "s") }
-            Spacer(Modifier.weight(1f))
-            Metric("BAT", s.batteryPercent?.let { "$it%" } ?: "N/D")
-        } else {
+        } else if (s.connection != ConnectionStatus.CONNECTING) {
             Text(
-                s.errorMessage ?: s.connectionLabel.ifEmpty { "Tocar para conectar" },
+                s.errorMessage ?: "Tocar para conectar",
                 style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/** Etiqueta compacta de una sola línea (nunca parte el texto en vertical). */
+@Composable
+fun StatusChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    container: Color = Color(0xFF37474F),
+    content: Color = Color.White,
+) {
+    Box(modifier.background(container, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Text(text, color = content, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
+    }
+}
+
+/** Cabecera simple de pantalla secundaria: flecha de volver, título y acciones. */
+@Composable
+fun ScreenHeader(
+    title: String,
+    onBack: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Row(modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (onBack != null) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }
+        } else {
+            Spacer(Modifier.width(16.dp))
+        }
+        Text(
+            title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        actions()
+    }
+}
+
+/** Engranaje que abre los Ajustes generales de la app (arriba a la derecha en las pestañas principales). */
+@Composable
+fun SettingsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onClick, modifier = modifier) {
+        Icon(Icons.Filled.Settings, contentDescription = "Ajustes")
+    }
+}
+
+/** Estado vacío: qué pasa y qué hacer. */
+@Composable
+fun EmptyState(title: String, message: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
+    Column(
+        modifier.fillMaxWidth().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Text(
+            message, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        action?.invoke()
     }
 }
 
@@ -214,7 +275,7 @@ fun NumberField(
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
-        label = { Text(label) },
+        label = { Text(label, maxLines = 1) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         suffix = if (suffix != null) { { Text(suffix) } } else null,
@@ -224,9 +285,9 @@ fun NumberField(
 }
 
 @Composable
-fun SectionTitle(text: String) {
+fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+        modifier = modifier.padding(top = 8.dp, bottom = 4.dp))
 }
 
 @Composable

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TopoGNSS</title>
+<meta name="description" content="App Android para levantamiento y replanteo con receptores Emlid Reach.">
+<style>
+  :root { --bg:#f6f7f4; --card:#fff; --ink:#1b2420; --muted:#5d6b64; --accent:#1f7a4d; --accent-ink:#fff; --line:#dfe4de; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#101512; --card:#171e1a; --ink:#e8eee9; --muted:#9aa9a1; --accent:#3fbf84; --accent-ink:#06150d; --line:#26312b; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:760px; margin:0 auto; padding:40px 16px 64px; }
+  h1 { font-size:2.2rem; margin:0 0 4px; letter-spacing:-.02em; }
+  h2 { font-size:1.15rem; margin:36px 0 12px; }
+  .lead { color:var(--muted); margin:0 0 24px; font-size:1.05rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; }
+  .dl { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+  .dl .info { flex:1 1 260px; }
+  .btn { display:inline-block; background:var(--accent); color:var(--accent-ink); text-decoration:none; font-weight:600;
+         padding:14px 22px; border-radius:12px; font-size:1.05rem; }
+  .btn[aria-disabled="true"] { opacity:.5; pointer-events:none; }
+  .meta { color:var(--muted); font-size:.9rem; margin-top:10px; }
+  #qr { width:132px; height:132px; background:#fff; padding:6px; border-radius:10px; border:1px solid var(--line); }
+  #qr img, #qr canvas { width:100%; height:100%; display:block; }
+  ul.feat { padding-left:20px; margin:0; } ul.feat li { margin:6px 0; }
+  ol { padding-left:20px; margin:0; } ol li { margin:8px 0; }
+  pre { white-space:pre-wrap; margin:0; font:inherit; color:var(--muted); font-size:.92rem; }
+  footer { margin-top:40px; color:var(--muted); font-size:.85rem; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>TopoGNSS</h1>
+  <p class="lead">Levantamiento y replanteo con receptores Emlid Reach, desde el teléfono.</p>
+
+  <div class="card dl">
+    <div class="info">
+      <a id="btn" class="btn" href="https://github.com/guileman/GNSS/releases/latest" aria-disabled="false">Descargar APK</a>
+      <div class="meta" id="meta">Buscando la última versión…</div>
+    </div>
+    <div id="qr" aria-label="Código QR de descarga" hidden></div>
+  </div>
+
+  <h2>Qué hace</h2>
+  <ul class="feat">
+    <li>Conexión al receptor por Wi-Fi o Bluetooth, con lista de receptores al estilo Emlid Flow.</li>
+    <li>Levantamiento de puntos con mapa (Google Maps u OpenStreetMap/Esri), promediado y calidad de la solución.</li>
+    <li>Replanteo: tocá un punto en el mapa y navegá hasta él con rumbo, distancia y tolerancia.</li>
+    <li>Herramientas de cálculo (COGO): estación/desplazamiento, intersecciones, resección, curvas, poligonal; con vista previa en el mapa.</li>
+    <li>Sistemas de coordenadas POSGAR 2007 (Gauss-Krüger), UTM y locales.</li>
+    <li>Importar CSV/TXT, DXF y KML. Exportar DXF (con etiquetas de nombre, descripción y tipo), CSV y reporte PDF.</li>
+  </ul>
+
+  <h2>Cómo instalarla</h2>
+  <ol>
+    <li>Abrí esta página desde el teléfono Android (o escaneá el QR) y tocá <b>Descargar APK</b>.</li>
+    <li>Cuando Android lo pida, permití instalar apps desde este navegador (Ajustes → Seguridad → Instalar apps desconocidas).</li>
+    <li>Abrí el archivo descargado y tocá <b>Instalar</b>.</li>
+    <li>Al abrir la app, aceptá los permisos de Bluetooth y ubicación.</li>
+  </ol>
+
+  <h2>Novedades</h2>
+  <div class="card"><pre id="notes">—</pre></div>
+
+  <footer>Versión de prueba en desarrollo. Código en <a href="https://github.com/guileman/GNSS">github.com/guileman/GNSS</a>.</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(async () => {
+  const btn = document.getElementById('btn'), meta = document.getElementById('meta'), notes = document.getElementById('notes');
+  try {
+    const r = await fetch('https://api.github.com/repos/guileman/GNSS/releases/latest');
+    if (!r.ok) throw new Error(r.status);
+    const rel = await r.json();
+    const apk = (rel.assets || []).find(a => a.name.toLowerCase().endsWith('.apk'));
+    if (!apk) throw new Error('sin apk');
+    btn.href = apk.browser_download_url;
+    btn.textContent = 'Descargar APK · ' + rel.tag_name;
+    const mb = (apk.size / 1048576).toFixed(1);
+    const fecha = new Date(rel.published_at).toLocaleDateString('es-AR', { day:'numeric', month:'long', year:'numeric' });
+    meta.textContent = `Versión ${rel.tag_name} · ${fecha} · ${mb} MB`;
+    notes.textContent = (rel.body || '').trim() || 'Sin notas para esta versión.';
+    if (window.QRCode) {
+      const q = document.getElementById('qr'); q.hidden = false;
+      new QRCode(q, { text: apk.browser_download_url, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.M });
+    }
+  } catch (e) {
+    meta.textContent = 'Todavía no hay una versión publicada.';
+    btn.setAttribute('aria-disabled', 'true');
+  }
+})();
+</script>
+</body>
+</html>

@@ -16,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -37,9 +38,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.topognss.app.data.ProjectEntity
 import com.topognss.app.data.crs
+import com.topognss.app.data.nomenclaturaCatastral
 import com.topognss.app.geo.CrsType
 import com.topognss.app.geo.ProjectCrs
 import com.topognss.app.ui.components.NumberField
+import com.topognss.app.ui.components.EmptyState
+import com.topognss.app.ui.components.SettingsButton
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
 import com.topognss.app.ui.hold
@@ -71,20 +75,27 @@ class ProjectsViewModel(app: Application) : AndroidViewModel(app) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProjectsScreen(onDone: () -> Unit, vm: ProjectsViewModel = viewModel()) {
+fun ProjectsScreen(onDone: () -> Unit, onOpenSettings: () -> Unit, vm: ProjectsViewModel = viewModel()) {
     val list by vm.projects.collectAsState()
     val active by vm.activeId.collectAsState()
     var editing by remember { mutableStateOf<ProjectEntity?>(null) }
     var creating by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().padding(12.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Proyectos", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            Button(onClick = { creating = true }) { Text("Nuevo") }
+            Button(onClick = { creating = true }) { Text("Nuevo", maxLines = 1, softWrap = false) }
+            SettingsButton(onOpenSettings)
         }
-        if (list.isEmpty()) Text("Todavía no hay proyectos. Creá uno para empezar a relevar.", Modifier.padding(top = 16.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+        if (list.isEmpty()) {
+            EmptyState(
+                title = "Todavía no hay proyectos",
+                message = "Creá uno para definir el sistema de coordenadas y empezar a relevar.",
+                modifier = Modifier.weight(1f),
+            )
+        } else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f).padding(top = 8.dp)) {
             items(list, key = { it.id }) { p ->
                 val isActive = p.id == active
                 Card(
@@ -97,12 +108,16 @@ fun ProjectsScreen(onDone: () -> Unit, vm: ProjectsViewModel = viewModel()) {
                             Text(p.name + if (isActive) "  (activo)" else "", style = MaterialTheme.typography.titleMedium)
                             Text(p.crs().describe(), style = MaterialTheme.typography.bodySmall)
                             if (p.description.isNotBlank()) Text(p.description, style = MaterialTheme.typography.bodySmall)
+                            p.nomenclaturaCatastral().takeIf { it.isNotBlank() }?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
-                        TextButton(onClick = { editing = p }) { Text("Editar") }
+                        TextButton(onClick = { editing = p }) { Text("Editar", maxLines = 1, softWrap = false) }
                     }
                 }
             }
         }
+
     }
 
     if (creating || editing != null) {
@@ -131,6 +146,11 @@ private fun ProjectDialog(
     var south by remember { mutableStateOf(initial?.south ?: true) }
     var oLat by remember { mutableStateOf(initial?.originLat?.toString() ?: "") }
     var oLon by remember { mutableStateOf(initial?.originLon?.toString() ?: "") }
+    var circ by remember { mutableStateOf(initial?.catastroCircunscripcion ?: "") }
+    var secc by remember { mutableStateOf(initial?.catastroSeccion ?: "") }
+    var mzCh by remember { mutableStateOf(initial?.catastroManzanaOChacra ?: "") }
+    var parc by remember { mutableStateOf(initial?.catastroParcela ?: "") }
+    var partida by remember { mutableStateOf(initial?.catastroPartida ?: "") }
     var confirmDelete by remember { mutableStateOf(false) }
 
     fun autoFromGnss() {
@@ -154,8 +174,8 @@ private fun ProjectDialog(
         title = { Text(if (initial == null) "Nuevo proyecto" else "Editar proyecto") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true)
-                OutlinedTextField(desc, { desc = it }, label = { Text("Descripción") })
+                OutlinedTextField(name, { name = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true)
+                OutlinedTextField(desc, { desc = it }, label = { Text("Descripción", maxLines = 1) })
                 Text("Sistema de coordenadas", style = MaterialTheme.typography.titleSmall)
                 CrsType.entries.forEach { t ->
                     Row(Modifier.fillMaxWidth().clickable { type = t }, verticalAlignment = Alignment.CenterVertically) {
@@ -180,6 +200,16 @@ private fun ProjectDialog(
                 OutlinedButton(onClick = { autoFromGnss() }, enabled = gnssLatLon != null) {
                     Text(if (gnssLatLon != null) "Completar con posición del receptor" else "Sin posición del receptor")
                 }
+                Text("Nomenclatura catastral (opcional)", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "El formato varía por provincia/país; completá solo los campos que uses.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(circ, { circ = it }, label = { Text("Circunscripción", maxLines = 1) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(secc, { secc = it }, label = { Text("Sección", maxLines = 1) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(mzCh, { mzCh = it }, label = { Text("Manzana / Chacra", maxLines = 1) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(parc, { parc = it }, label = { Text("Parcela", maxLines = 1) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(partida, { partida = it }, label = { Text("Partida inmobiliaria", maxLines = 1) }, singleLine = true)
                 if (initial != null) {
                     Text("Si cambiás el sistema se recalculan las planas de todos los puntos.",
                         style = MaterialTheme.typography.bodySmall)
@@ -199,6 +229,9 @@ private fun ProjectDialog(
                         name = name.trim(), description = desc.trim(), crsType = type.name,
                         zone = zoneInt ?: 0, south = south,
                         originLat = parseNum(oLat) ?: 0.0, originLon = parseNum(oLon) ?: 0.0,
+                        catastroCircunscripcion = circ.trim(), catastroSeccion = secc.trim(),
+                        catastroManzanaOChacra = mzCh.trim(), catastroParcela = parc.trim(),
+                        catastroPartida = partida.trim(),
                     )
                 )
             }) { Text("Guardar") }

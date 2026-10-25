@@ -14,6 +14,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.topognss.app.geo.CrsType
 import com.topognss.app.geo.ProjectCrs
 import kotlinx.coroutines.flow.Flow
@@ -29,7 +31,29 @@ data class ProjectEntity(
     val originLat: Double = 0.0,
     val originLon: Double = 0.0,
     val createdAt: Long = System.currentTimeMillis(),
+    /**
+     * Nomenclatura catastral del predio (formato libre: varía por provincia/país). Se guarda
+     * como un único string compuesto (p. ej. "Circ. II - Secc. B - Mz. 14 - Parc. 7") más sus
+     * partes sueltas para completar formularios o planillas que las requieran por separado.
+     */
+    val catastroCircunscripcion: String = "",
+    val catastroSeccion: String = "",
+    val catastroManzanaOChacra: String = "",
+    val catastroParcela: String = "",
+    val catastroPartida: String = "",
 )
+
+/** Nomenclatura catastral armada a partir de las partes del proyecto, lista para mostrar/exportar. */
+fun ProjectEntity.nomenclaturaCatastral(): String {
+    val parts = listOfNotNull(
+        catastroCircunscripcion.takeIf { it.isNotBlank() }?.let { "Circ. $it" },
+        catastroSeccion.takeIf { it.isNotBlank() }?.let { "Secc. $it" },
+        catastroManzanaOChacra.takeIf { it.isNotBlank() }?.let { "Mz./Ch. $it" },
+        catastroParcela.takeIf { it.isNotBlank() }?.let { "Parc. $it" },
+        catastroPartida.takeIf { it.isNotBlank() }?.let { "Partida $it" },
+    )
+    return parts.joinToString(" - ")
+}
 
 /** Extensiones (fuera de la entidad para que Room no intente persistirlas). */
 fun ProjectEntity.crs(): ProjectCrs = ProjectCrs(
@@ -79,6 +103,8 @@ data class PointEntity(
     val epochs: Int = 0,
     val note: String = "",
     val createdAt: Long = System.currentTimeMillis(),
+    /** Ruta absoluta de la foto georreferenciada del punto (archivo propio de la app), si tiene. */
+    val photoPath: String? = null,
 )
 
 fun PointEntity.pointKind(): PointKind = runCatching { PointKind.valueOf(kind) }.getOrDefault(PointKind.SURVEY)
@@ -131,13 +157,27 @@ interface PointDao {
     suspend fun delete(p: PointEntity)
 }
 
-@Database(entities = [ProjectEntity::class, PointEntity::class], version = 1, exportSchema = false)
+/** v1 → v2: agrega la columna de la foto georreferenciada por punto y las columnas de nomenclatura catastral del proyecto. */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE points ADD COLUMN photoPath TEXT")
+        db.execSQL("ALTER TABLE projects ADD COLUMN catastroCircunscripcion TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE projects ADD COLUMN catastroSeccion TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE projects ADD COLUMN catastroManzanaOChacra TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE projects ADD COLUMN catastroParcela TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE projects ADD COLUMN catastroPartida TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+@Database(entities = [ProjectEntity::class, PointEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun pointDao(): PointDao
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "topognss.db").build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "topognss.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
     }
 }

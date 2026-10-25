@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -121,6 +122,10 @@ private class TopoOverlay(private val density: Float) : Overlay() {
     var line: List<GeoPoint> = emptyList()
     var closeLine: Boolean = false
     var onTap: ((Long) -> Unit)? = null
+    /** Líneas punteadas auxiliares (p. ej. estación y desplazamiento en Cálculo). */
+    var dashed: List<List<GeoPoint>> = emptyList()
+    /** Puntos calculados aún no guardados (vista previa). */
+    var previews: List<MapPoint> = emptyList()
 
     private val p = Point()
     private val q = Point()
@@ -131,6 +136,11 @@ private class TopoOverlay(private val density: Float) : Overlay() {
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = 3f * density; color = 0xFFF2B705.toInt()
     }
+    private val dashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 2.5f * density; color = PREVIEW_COLOR.toArgb()
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(10f * density, 6f * density), 0f)
+    }
+    private val dashPath = android.graphics.Path()
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 12f * density; typeface = Typeface.DEFAULT_BOLD; color = android.graphics.Color.WHITE
     }
@@ -152,6 +162,17 @@ private class TopoOverlay(private val density: Float) : Overlay() {
             }
         }
 
+        // Líneas punteadas auxiliares
+        for (seg in dashed) {
+            if (seg.size < 2) continue
+            dashPath.reset()
+            seg.forEachIndexed { i, g ->
+                proj.toPixels(g, p)
+                if (i == 0) dashPath.moveTo(p.x.toFloat(), p.y.toFloat()) else dashPath.lineTo(p.x.toFloat(), p.y.toFloat())
+            }
+            c.drawPath(dashPath, dashPaint)
+        }
+
         // Puntos del proyecto
         val r = 6f * density
         for (pt in points) {
@@ -164,6 +185,17 @@ private class TopoOverlay(private val density: Float) : Overlay() {
             val ty = p.y - r * 0.6f
             c.drawText(label, tx, ty, halo)
             c.drawText(label, tx, ty, text)
+        }
+
+        // Vista previa del punto calculado: anillo punteado
+        for (pv in previews) {
+            proj.toPixels(GeoPoint(pv.lat, pv.lon), p)
+            val x = p.x.toFloat(); val y = p.y.toFloat()
+            fill.color = PREVIEW_COLOR.copy(alpha = 0.35f).toArgb()
+            c.drawCircle(x, y, 9f * density, fill)
+            c.drawCircle(x, y, 9f * density, dashPaint)
+            c.drawText(pv.name, x + 12f * density, y - 6f * density, halo)
+            c.drawText(pv.name, x + 12f * density, y - 6f * density, text)
         }
 
         // Objetivo de replanteo: diana
@@ -228,12 +260,27 @@ private class TopoOverlay(private val density: Float) : Overlay() {
 // Composable
 // =============================================================================================
 
+/** Color de las líneas punteadas y de la vista previa de puntos calculados. */
+val PREVIEW_COLOR = Color(0xFF00B8D4)
+
+/** true si la app tiene clave de Google Maps y el teléfono tiene Google Play Services. */
+fun googleMapsAvailable(context: Context): Boolean = runCatching {
+    val ai = context.packageManager.getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
+    val key = ai.metaData?.getString("com.google.android.geo.API_KEY").orEmpty()
+    key.isNotBlank() && !key.startsWith("\${") &&
+        com.google.android.gms.common.GoogleApiAvailability.getInstance()
+            .isGooglePlayServicesAvailable(context) == com.google.android.gms.common.ConnectionResult.SUCCESS
+}.getOrDefault(false)
+
 /**
  * Mapa base con capas seleccionables y el overlay topográfico.
+ * Usa Google Maps si hay clave de API y está elegido en Ajustes; si no, OpenStreetMap/Esri (sin Internet).
  *
  * @param fitKey cada vez que cambia se hace zoom para encuadrar puntos + posición + objetivo.
  * @param follow si es true el mapa sigue la posición del receptor.
  * @param rotationDeg rumbo del operador (°) para girar el mapa "rumbo arriba"; null = norte arriba.
+ * @param dashed líneas punteadas auxiliares (lat, lon), p. ej. los parámetros de un cálculo.
+ * @param previews puntos calculados todavía no guardados (se dibujan con anillo punteado).
  */
 @Composable
 fun TopoMap(
@@ -247,6 +294,34 @@ fun TopoMap(
     rotationDeg: Float? = null,
     fitKey: Any? = Unit,
     onPointTap: ((Long) -> Unit)? = null,
+    dashed: List<List<Pair<Double, Double>>> = emptyList(),
+    previews: List<MapPoint> = emptyList(),
+) {
+    val context = LocalContext.current
+    val app = context.applicationContext as TopoApp
+    val provider by app.prefs.mapProvider.collectAsState()
+    val googleOk = remember { googleMapsAvailable(context) }
+    if (googleOk && provider == "GOOGLE") {
+        GoogleTopoMap(modifier, points, me, target, line, closeLine, follow, rotationDeg, fitKey, onPointTap, dashed, previews)
+    } else {
+        OsmTopoMap(modifier, points, me, target, line, closeLine, follow, rotationDeg, fitKey, onPointTap, dashed, previews)
+    }
+}
+
+@Composable
+private fun OsmTopoMap(
+    modifier: Modifier,
+    points: List<MapPoint>,
+    me: MapMe?,
+    target: MapPoint?,
+    line: List<Pair<Double, Double>>,
+    closeLine: Boolean,
+    follow: Boolean,
+    rotationDeg: Float?,
+    fitKey: Any?,
+    onPointTap: ((Long) -> Unit)?,
+    dashed: List<List<Pair<Double, Double>>>,
+    previews: List<MapPoint>,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as TopoApp
@@ -332,6 +407,8 @@ fun TopoMap(
                 overlay.line = line.map { GeoPoint(it.first, it.second) }
                 overlay.closeLine = closeLine
                 overlay.onTap = onPointTap
+                overlay.dashed = dashed.map { seg -> seg.map { GeoPoint(it.first, it.second) } }
+                overlay.previews = previews
                 mv.mapOrientation = -(rotationDeg ?: 0f)
                 if (follow && me != null) mv.controller.setCenter(GeoPoint(me.lat, me.lon))
                 mv.invalidate()
@@ -355,11 +432,11 @@ fun TopoMap(
 }
 
 @Composable
-private fun LayerSelector(current: MapLayer, onSelect: (MapLayer) -> Unit) {
+internal fun LayerSelector(current: MapLayer, onSelect: (MapLayer) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         SmallFloatingActionButton(onClick = { open = true }) {
-            Text(current.label.take(3), style = MaterialTheme.typography.labelMedium)
+            Icon(Icons.Filled.Layers, contentDescription = "Capas del mapa", Modifier.size(20.dp))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             MapLayer.entries.forEach { l ->

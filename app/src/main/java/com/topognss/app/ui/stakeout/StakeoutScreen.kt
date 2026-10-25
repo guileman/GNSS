@@ -15,6 +15,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import com.topognss.app.ui.components.EmptyState
+import com.topognss.app.ui.components.ScreenHeader
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -61,7 +73,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.topognss.app.cogo.AlignmentFix
 import com.topognss.app.cogo.formatDms
+import com.topognss.app.ui.components.OrderedPointSelector
 import com.topognss.app.sensors.FusedHeading
 import com.topognss.app.sensors.HeadingMode
 import com.topognss.app.sensors.HeadingSource
@@ -83,7 +97,7 @@ import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel()) {
+fun StakeoutScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: StakeoutViewModel = viewModel()) {
     val project by vm.project.collectAsState()
     val target by vm.target.collectAsState()
     val s by vm.gnss.collectAsState()
@@ -91,6 +105,7 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
     val points by vm.points.collectAsState()
     var picking by remember { mutableStateOf(false) }
     var mapMode by rememberSaveable { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -112,94 +127,111 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
         label = "bg",
     )
 
-    Column(Modifier.fillMaxSize().background(bg).padding(horizontal = 12.dp)) {
-        // --- Objetivo ---
-        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { vm.step(-1) }) { Text("◀") }
-            Column(Modifier.weight(1f).clickable { picking = true }, horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Objetivo", style = MaterialTheme.typography.labelSmall)
-                Text(t?.name ?: "Elegir punto…", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                t?.let { Text("E ${it.easting.f(3)}  N ${it.northing.f(3)}  H ${it.elevation.f(3)}", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+    Column(Modifier.fillMaxSize().background(bg)) {
+        ScreenHeader(title = "Replanteo", onBack = onBack) {
+            if (!vm.alignmentMode) {
+                IconButton(onClick = { mapMode = !mapMode }) {
+                    Icon(
+                        if (mapMode) Icons.Filled.Navigation else Icons.Filled.Map,
+                        contentDescription = if (mapMode) "Ver guía" else "Ver mapa",
+                    )
+                }
             }
-            TextButton(onClick = { vm.step(1) }) { Text("▶") }
+            IconButton(onClick = { showSettings = true }) {
+                Icon(Icons.Filled.Settings, contentDescription = "Ajustes de replanteo")
+            }
         }
+        Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp)) {
+            // --- Modo: punto único o eje/alineación ---
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = !vm.alignmentMode, onClick = { vm.alignmentMode = false }, label = { Text("Punto", maxLines = 1) })
+                FilterChip(selected = vm.alignmentMode, onClick = { vm.alignmentMode = true }, label = { Text("Eje", maxLines = 1) })
+            }
+            if (vm.alignmentMode) {
+                AlignmentPanel(vm, points, s)
+            } else {
+                // --- Objetivo ---
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { vm.step(-1) }) { Text("◀") }
+                    Column(Modifier.weight(1f).clickable { picking = true }, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Objetivo", style = MaterialTheme.typography.labelSmall)
+                        Text(t?.name ?: "Elegir punto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        t?.let { Text("E ${it.easting.f(3)}  N ${it.northing.f(3)}  H ${it.elevation.f(3)}", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+                    }
+                    TextButton(onClick = { vm.step(1) }) { Text("▶") }
+                }
 
-        // --- Indicaciones grandes ---
-        if (t == null) {
-            Text("Tocá \"Elegir punto\" o usá ‹Replantear› desde la lista de puntos.", Modifier.padding(16.dp))
-        } else if (nav == null) {
-            Text("Esperando posición del receptor…", Modifier.padding(16.dp), color = SingleRed)
-        } else {
-            Text(
-                distanceText(nav.distance),
-                Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
-                fontSize = 44.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace,
-                color = if (inside) FixGreen else MaterialTheme.colorScheme.onBackground,
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                if (nav.forward != null && nav.right != null) {
-                    BigDirection(if (nav.forward >= 0) "Avanzar" else "Retroceder", abs(nav.forward))
-                    BigDirection(if (nav.right >= 0) "Derecha" else "Izquierda", abs(nav.right))
+                // --- Indicaciones grandes ---
+                if (t == null) {
+                    EmptyState(
+                        title = "Elegí un punto para replantear",
+                        message = "También podés usar Replantear desde la lista de puntos.",
+                        modifier = Modifier.weight(1f),
+                        action = { Button(onClick = { picking = true }) { Text("Elegir punto") } },
+                    )
+                } else if (nav == null) {
+                    Text("Esperando posición del receptor…", Modifier.padding(16.dp), color = SingleRed)
                 } else {
-                    BigDirection(if (nav.dNorth >= 0) "Norte" else "Sur", abs(nav.dNorth))
-                    BigDirection(if (nav.dEast >= 0) "Este" else "Oeste", abs(nav.dEast))
+                    Text(
+                        distanceText(nav.distance),
+                        Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
+                        fontSize = 44.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace,
+                        color = if (inside) FixGreen else MaterialTheme.colorScheme.onBackground,
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        if (nav.forward != null && nav.right != null) {
+                            BigDirection(if (nav.forward >= 0) "Avanzar" else "Retroceder", abs(nav.forward))
+                            BigDirection(if (nav.right >= 0) "Derecha" else "Izquierda", abs(nav.right))
+                        } else {
+                            BigDirection(if (nav.dNorth >= 0) "Norte" else "Sur", abs(nav.dNorth))
+                            BigDirection(if (nav.dEast >= 0) "Este" else "Oeste", abs(nav.dEast))
+                        }
+                        nav.cutFill?.let { BigDirection(if (it >= 0) "Cortar" else "Rellenar", abs(it)) }
+                    }
                 }
-                nav.cutFill?.let { BigDirection(if (it >= 0) "Cortar" else "Rellenar", abs(it)) }
-            }
-        }
 
-        // --- Gráfico: flecha lejos, radar/diana cerca ---
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(selected = !mapMode, onClick = { mapMode = false }, label = { Text("Guía") })
-            FilterChip(selected = mapMode, onClick = { mapMode = true }, label = { Text("Mapa") })
-        }
-        if (mapMode) Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp)) {
-            // Mapa "rumbo arriba" si hay rumbo; si no, norte arriba. Sigue la posición del receptor.
-            TopoMap(
-                modifier = Modifier.fillMaxSize(),
-                points = points.filter { it.id != t?.id }.map { it.toMapPoint() },
-                me = s.toMapMe(),
-                target = t?.toMapPoint()?.copy(color = if (inside) FixGreen else SingleRed),
-                line = if (t != null && s.lat != null && s.lon != null) listOf(s.lat!! to s.lon!!, t.lat to t.lon) else emptyList(),
-                follow = true,
-                rotationDeg = heading.degrees?.takeIf { heading.source != HeadingSource.NONE },
-                fitKey = t?.id,
-            )
-            if (nav != null) {
-                Box(Modifier.align(Alignment.BottomStart).padding(8.dp).size(96.dp)) {
-                    DirectionArrow(angleDeg = (nav.relativeDeg ?: nav.azimuthDeg).toFloat(), color = solutionTint(s.solution.code))
+                // --- Gráfico: flecha lejos, radar/diana cerca (o mapa) ---
+                if (t != null) {
+                    if (mapMode) Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp)) {
+                        // Mapa "rumbo arriba" si hay rumbo; si no, norte arriba. Sigue la posición del receptor.
+                        TopoMap(
+                            modifier = Modifier.fillMaxSize(),
+                            points = points.filter { it.id != t.id }.map { it.toMapPoint() },
+                            me = s.toMapMe(),
+                            target = t.toMapPoint().copy(color = if (inside) FixGreen else SingleRed),
+                            line = if (s.lat != null && s.lon != null) listOf(s.lat!! to s.lon!!, t.lat to t.lon) else emptyList(),
+                            follow = true,
+                            rotationDeg = heading.degrees?.takeIf { heading.source != HeadingSource.NONE },
+                            fitKey = t.id,
+                        )
+                        if (nav != null) {
+                            Box(Modifier.align(Alignment.BottomStart).padding(8.dp).size(96.dp)) {
+                                DirectionArrow(angleDeg = (nav.relativeDeg ?: nav.azimuthDeg).toFloat(), color = solutionTint(s.solution.code))
+                            }
+                        }
+                    } else Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                        if (nav != null) {
+                            if (nav.distance > 3.0) {
+                                // Sin rumbo: flecha orientada al norte de pantalla (azimut absoluto)
+                                DirectionArrow(angleDeg = (nav.relativeDeg ?: nav.azimuthDeg).toFloat(), color = solutionTint(s.solution.code))
+                            } else {
+                                Radar(nav, heading, vm.tolerance)
+                            }
+                        }
+                    }
+                    HeadingWarnings(heading, compass?.accuracy, vm.compassAvailable)
+                    Button(
+                        onClick = { vm.record(nav, heading) },
+                        enabled = nav != null,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(56.dp),
+                    ) { Text("Registrar", maxLines = 1, softWrap = false) }
                 }
-            }
-        } else Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
-            if (nav != null) {
-                if (nav.distance > 3.0) {
-                    // Sin rumbo: flecha orientada al norte de pantalla (azimut absoluto)
-                    DirectionArrow(angleDeg = (nav.relativeDeg ?: nav.azimuthDeg).toFloat(), color = solutionTint(s.solution.code))
-                } else {
-                    Radar(nav, heading, vm.tolerance)
-                }
+                vm.message?.let { Text(it, fontSize = 12.sp) }
             }
         }
-
-        // --- Rumbo / sensores ---
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            HeadingMode.entries.forEach { m ->
-                FilterChip(selected = vm.headingMode == m, onClick = { vm.headingMode = m }, label = { Text(m.label) })
-            }
-        }
-        HeadingInfo(heading, compass?.declinationDeg, compass?.accuracy, vm.compassAvailable, nav)
-
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            listOf(0.02, 0.05, 0.10).forEach { tol ->
-                FilterChip(selected = abs(vm.tolerance - tol) < 1e-6, onClick = { vm.updateTolerance(tol) },
-                    label = { Text("${(tol * 100).toInt()} cm") })
-            }
-            TextButton(onClick = { vm.toggleSound() }) { Text(if (vm.sound) "🔊" else "🔇") }
-            Button(onClick = { vm.record(nav, heading) }, enabled = nav != null, modifier = Modifier.weight(1f)) { Text("Registrar") }
-        }
-        vm.message?.let { Text(it, fontSize = 12.sp) }
     }
+
+    if (showSettings) StakeoutSettingsDialog(vm, onDismiss = { showSettings = false })
 
     if (picking) {
         AlertDialog(
@@ -214,6 +246,90 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, vm: StakeoutViewModel = viewModel
                 }
             },
             confirmButton = { TextButton(onClick = { picking = false }) { Text("Cerrar") } },
+        )
+    }
+}
+
+/**
+ * Replanteo de ejes/alineaciones: en vez de un único punto objetivo, el operador elige una
+ * polilínea de puntos (el eje, p. ej. una cañería o un cordón) y camina sobre ella; la app
+ * muestra en todo momento la estación (distancia acumulada desde el inicio del eje) y el
+ * desvío lateral (+ derecha / − izquierda) respecto del eje, para corregir la trayectoria.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.AlignmentPanel(
+    vm: StakeoutViewModel,
+    points: List<com.topognss.app.data.PointEntity>,
+    s: com.topognss.app.gnss.GnssState,
+) {
+    var picking by remember { mutableStateOf(false) }
+    val path = vm.alignmentSelected.mapNotNull { id -> points.firstOrNull { it.id == id } }
+    val fix: AlignmentFix? = vm.alignmentFix(points, s)
+    val totalLength = vm.alignmentLength(points)
+
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Eje", style = MaterialTheme.typography.labelSmall)
+            Text(
+                if (path.isEmpty()) "Elegir puntos del eje…" else path.joinToString(" → ") { it.name },
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+            )
+        }
+        TextButton(onClick = { picking = true }) { Text("Elegir") }
+        if (path.isNotEmpty()) TextButton(onClick = { vm.clearAlignment() }) { Text("Limpiar") }
+    }
+
+    when {
+        path.size < 2 -> Text("Seleccioná 2 o más puntos, en orden, para definir el eje.", Modifier.padding(16.dp))
+        s.lat == null || s.lon == null -> Text("Esperando posición del receptor…", Modifier.padding(16.dp), color = SingleRed)
+        fix == null -> Text("Sin posición en el plano del proyecto.", Modifier.padding(16.dp), color = SingleRed)
+        else -> {
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Estación", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "${fix.station.f(2)} / ${totalLength.f(2)} m", fontSize = 26.sp,
+                        fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (fix.offset >= 0) "Derecha" else "Izquierda", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "${abs(fix.offset).f(3)} m", fontSize = 34.sp, fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (abs(fix.offset) <= vm.tolerance) FixGreen else MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+            }
+            Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp)) {
+                TopoMap(
+                    modifier = Modifier.fillMaxSize(),
+                    points = path.mapIndexed { i, p -> p.toMapPoint(order = i + 1) },
+                    me = s.toMapMe(),
+                    line = path.map { it.lat to it.lon },
+                    follow = true,
+                    fitKey = vm.alignmentSelected.joinToString(","),
+                )
+            }
+            Button(
+                onClick = { vm.recordAlignment(points, s) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(56.dp),
+            ) { Text("Registrar", maxLines = 1, softWrap = false) }
+        }
+    }
+    vm.message?.let { Text(it, fontSize = 12.sp) }
+
+    if (picking) {
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text("Puntos del eje (en orden)") },
+            text = {
+                Column {
+                    OrderedPointSelector(points, vm.alignmentSelected, vm::toggleAlignmentPoint, Modifier.heightIn(max = 420.dp))
+                }
+            },
+            confirmButton = { TextButton(onClick = { picking = false }) { Text("Listo") } },
         )
     }
 }
@@ -238,17 +354,9 @@ private fun BigDirection(label: String, value: Double) {
     }
 }
 
+/** Sólo avisos útiles sobre el rumbo (sin magnetómetro / brújula poco precisa); el resto va en Ajustes. */
 @Composable
-private fun HeadingInfo(h: FusedHeading, declination: Float?, accuracy: Int?, compassAvailable: Boolean, nav: StakeNav?) {
-    val src = when (h.source) {
-        HeadingSource.COMPASS -> "brújula"
-        HeadingSource.GNSS_COG -> "rumbo GNSS (en movimiento)"
-        HeadingSource.NONE -> "norte arriba"
-    }
-    val parts = mutableListOf("Rumbo ${(h.degrees?.toDouble()).f(0)}° ($src)")
-    declination?.let { parts += "decl. ${it.toDouble().f(1)}°" }
-    nav?.let { parts += "Az ${formatDms(it.azimuthDeg, 0)}" }
-    Text(parts.joinToString(" · "), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun HeadingWarnings(h: FusedHeading, accuracy: Int?, compassAvailable: Boolean) {
     if (!compassAvailable) {
         Text("El teléfono no tiene magnetómetro: usá rumbo GNSS caminando.", fontSize = 11.sp, color = SingleRed)
     } else if (accuracy != null && accuracy < android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM &&
@@ -256,6 +364,43 @@ private fun HeadingInfo(h: FusedHeading, declination: Float?, accuracy: Int?, co
         Text("Brújula poco precisa: calibrala moviendo el teléfono en forma de 8 y alejate de metales.",
             fontSize = 11.sp, color = FloatYellow)
     }
+}
+
+/** Ajustes de replanteo: tolerancia, sonido y fuente del rumbo (antes ocupaban la pantalla principal). */
+@Composable
+private fun StakeoutSettingsDialog(vm: StakeoutViewModel, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ajustes de replanteo") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Tolerancia", style = MaterialTheme.typography.titleSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0.02, 0.05, 0.10).forEach { tol ->
+                        FilterChip(
+                            selected = abs(vm.tolerance - tol) < 1e-6, onClick = { vm.updateTolerance(tol) },
+                            label = { Text("${(tol * 100).toInt()} cm", maxLines = 1, softWrap = false) },
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Alerta sonora", Modifier.weight(1f))
+                    Switch(checked = vm.sound, onCheckedChange = { vm.toggleSound() })
+                }
+                Text("Rumbo", style = MaterialTheme.typography.titleSmall)
+                HeadingMode.entries.forEach { m ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { vm.headingMode = m },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = vm.headingMode == m, onClick = { vm.headingMode = m })
+                        Text(m.label)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Listo") } },
+    )
 }
 
 /** Flecha grande que rota suavemente (tomando el camino angular más corto). */

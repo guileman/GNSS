@@ -4,36 +4,33 @@ import android.Manifest
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -43,35 +40,35 @@ import androidx.navigation.compose.rememberNavController
 import com.topognss.app.ui.cogo.CogoScreen
 import com.topognss.app.ui.components.GnssStatusBar
 import com.topognss.app.ui.connection.ConnectionScreen
+import com.topognss.app.ui.plumb.PlumbScreen
 import com.topognss.app.ui.points.PointsScreen
 import com.topognss.app.ui.projects.ProjectsScreen
+import com.topognss.app.ui.settings.SettingsScreen
 import com.topognss.app.ui.stakeout.StakeoutScreen
 import com.topognss.app.ui.survey.SurveyScreen
-import com.topognss.app.ui.theme.TopoTheme
-import androidx.activity.SystemBarStyle
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.dp
 import com.topognss.app.ui.theme.LocalDarkTheme
 import com.topognss.app.ui.theme.ThemeMode
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
+import com.topognss.app.ui.theme.TopoTheme
 
+/**
+ * Navegación estilo Emlid Flow: sólo tres pestañas (Receptores, Levantamiento, Proyectos).
+ * Puntos, Cálculo y Replanteo se abren desde Levantamiento; Ajustes (tema, plomada) con el engranaje
+ * de arriba. Todas son pantallas secundarias con su flecha de volver.
+ */
 private enum class Dest(val route: String, val label: String, val icon: ImageVector) {
-    CONNECTION("connection", "GNSS", Icons.Filled.Settings),
-    SURVEY("survey", "Relevar", Icons.Filled.Add),
-    POINTS("points", "Puntos", Icons.Filled.List),
-    COGO("cogo", "Cálculo", Icons.Filled.Build),
-    STAKEOUT("stakeout", "Replanteo", Icons.Filled.Place),
+    CONNECTION("connection", "Receptores", Icons.Filled.SettingsInputAntenna),
+    SURVEY("survey", "Levantamiento", Icons.Filled.Map),
+    PROJECTS("projects", "Proyectos", Icons.Filled.Folder),
 }
 
-private const val ROUTE_PROJECTS = "projects"
+private const val ROUTE_POINTS = "points"
+private const val ROUTE_COGO = "cogo"
+private const val ROUTE_STAKEOUT = "stakeout"
+private const val ROUTE_PLUMB = "plumb"
+private const val ROUTE_SETTINGS = "settings"
+
+/** Pantallas donde se muestra la franja de estado del receptor. */
+private val STATUS_ROUTES = setOf(Dest.SURVEY.route, ROUTE_POINTS, ROUTE_COGO, ROUTE_STAKEOUT)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,15 +92,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @Composable
 private fun AppRoot(app: TopoApp) {
     val nav = rememberNavController()
     val gnss by app.gnss.state.collectAsState()
-    val projectFlow = remember {
-        app.prefs.activeProjectId.flatMapLatest { id -> if (id > 0) app.repository.observeProject(id) else flowOf(null) }
-    }
-    val project by projectFlow.collectAsState(initial = null)
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
 
@@ -113,75 +105,83 @@ private fun AppRoot(app: TopoApp) {
         val perms = buildList {
             add(Manifest.permission.ACCESS_FINE_LOCATION)
             add(Manifest.permission.ACCESS_COARSE_LOCATION)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(Manifest.permission.BLUETOOTH_CONNECT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+                add(Manifest.permission.BLUETOOTH_SCAN)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
         }
         permLauncher.launch(perms.toTypedArray())
     }
 
+    val showStrip = route in STATUS_ROUTES
+    val showTabs = Dest.entries.any { it.route == route }
+
     Scaffold(
         topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        Text(project?.name ?: "TopoGNSS", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    },
-                    actions = {
-                        TextButton(onClick = { nav.navigate(ROUTE_PROJECTS) { launchSingleTop = true } }) {
-                            Icon(Icons.Filled.LocationOn, contentDescription = null)
-                            Text(" Proyectos")
-                        }
-                        ThemeMenu(app)
-                    },
-                )
-                GnssStatusBar(gnss) { nav.goTab(Dest.CONNECTION) }
+            // Un solo aviso de estado, delgado, y sólo donde aporta (no en Receptor, que ya lo muestra completo).
+            Column(
+                Modifier
+                    .background(if (showStrip) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+            ) {
+                if (showStrip) GnssStatusBar(gnss) { nav.goTab(Dest.CONNECTION) }
             }
         },
         bottomBar = {
-            NavigationBar {
-                Dest.entries.forEach { d ->
-                    NavigationBarItem(
-                        selected = route == d.route,
-                        onClick = { nav.goTab(d) },
-                        icon = { Icon(d.icon, contentDescription = d.label) },
-                        label = { Text(d.label) },
-                    )
+            if (showTabs) {
+                NavigationBar {
+                    Dest.entries.forEach { d ->
+                        NavigationBarItem(
+                            selected = route == d.route,
+                            onClick = { nav.goTab(d) },
+                            icon = { Icon(d.icon, contentDescription = d.label) },
+                            label = { Text(d.label, maxLines = 1, softWrap = false) },
+                        )
+                    }
                 }
             }
         },
     ) { padding ->
-        val openProjects = { nav.navigate(ROUTE_PROJECTS) { launchSingleTop = true } }
+        val openProjects = { nav.goTab(Dest.PROJECTS) }
+        val back: () -> Unit = { nav.popBackStack() }
+        val openSettings = { nav.navigate(ROUTE_SETTINGS) { launchSingleTop = true } }
         NavHost(
             navController = nav,
-            startDestination = if (app.prefs.activeProjectId.value > 0) Dest.CONNECTION.route else ROUTE_PROJECTS,
-            modifier = Modifier.fillMaxSize().padding(padding),
+            startDestination = if (app.prefs.activeProjectId.value > 0) Dest.SURVEY.route else Dest.PROJECTS.route,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .then(if (showTabs) Modifier else Modifier.navigationBarsPadding()),
         ) {
-            composable(Dest.CONNECTION.route) { ConnectionScreen() }
-            composable(Dest.SURVEY.route) { SurveyScreen(onOpenProjects = openProjects) }
-            composable(Dest.POINTS.route) {
-                PointsScreen(onOpenProjects = openProjects, onStake = { nav.goTab(Dest.STAKEOUT) })
-            }
-            composable(Dest.COGO.route) { CogoScreen(onOpenProjects = openProjects) }
-            composable(Dest.STAKEOUT.route) { StakeoutScreen(onOpenProjects = openProjects) }
-            composable(ROUTE_PROJECTS) { ProjectsScreen(onDone = { nav.goTab(Dest.SURVEY) }) }
-        }
-    }
-}
-
-/** Menú ⋮ con la elección de tema (se guarda en preferencias). */
-@Composable
-private fun ThemeMenu(app: TopoApp) {
-    var open by remember { mutableStateOf(false) }
-    val current by app.prefs.themeMode.collectAsState()
-    Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Opciones") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text("Tema", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
-            ThemeMode.entries.forEach { m ->
-                DropdownMenuItem(
-                    text = { Text((if (current == m.name) "✓ " else "   ") + m.label) },
-                    onClick = { app.prefs.setThemeMode(m.name); open = false },
+            composable(Dest.CONNECTION.route) { ConnectionScreen(onOpenSettings = openSettings) }
+            composable(Dest.SURVEY.route) {
+                SurveyScreen(
+                    onOpenProjects = openProjects,
+                    onOpenPoints = { nav.navigate(ROUTE_POINTS) { launchSingleTop = true } },
+                    onOpenCogo = { nav.navigate(ROUTE_COGO) { launchSingleTop = true } },
+                    onOpenStakeout = { nav.navigate(ROUTE_STAKEOUT) { launchSingleTop = true } },
+                    onOpenSettings = openSettings,
                 )
+            }
+            composable(Dest.PROJECTS.route) {
+                ProjectsScreen(
+                    onDone = { nav.goTab(Dest.SURVEY) },
+                    onOpenSettings = openSettings,
+                )
+            }
+            composable(ROUTE_POINTS) {
+                PointsScreen(
+                    onOpenProjects = openProjects,
+                    onStake = { nav.navigate(ROUTE_STAKEOUT) { launchSingleTop = true } },
+                    onBack = back,
+                )
+            }
+            composable(ROUTE_COGO) { CogoScreen(onOpenProjects = openProjects, onBack = back) }
+            composable(ROUTE_STAKEOUT) { StakeoutScreen(onOpenProjects = openProjects, onBack = back) }
+            composable(ROUTE_PLUMB) { PlumbScreen() }
+            composable(ROUTE_SETTINGS) {
+                SettingsScreen(onBack = back, onOpenPlumb = { nav.navigate(ROUTE_PLUMB) { launchSingleTop = true } })
             }
         }
     }

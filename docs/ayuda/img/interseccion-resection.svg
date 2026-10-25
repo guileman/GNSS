@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 320" font-family="sans-serif">
+  <style>
+    .known { fill: #0E7C86; }
+    .unk { fill: #D7263D; }
+    .ray { stroke: #0E7C86; stroke-width: 1.5; }
+    .lbl { font-size: 13px; fill: #222; }
+    .leg { font-size: 12px; fill: #555; }
+  </style>
+  <rect width="560" height="320" fill="#ffffff"/>
+  <text x="20" y="26" font-size="16" font-weight="bold">Intersección y resección (Tienstra)</text>
+
+  <!-- Left: intersection by two azimuths -->
+  <g>
+    <text x="30" y="55" class="leg">Intersección: dos visuales que se cruzan</text>
+    <circle cx="60" cy="230" r="5" class="known"/>
+    <text x="40" y="250" class="lbl">A</text>
+    <circle cx="210" cy="230" r="5" class="known"/>
+    <text x="215" y="250" class="lbl">B</text>
+    <line x1="60" y1="230" x2="150" y2="90" class="ray"/>
+    <line x1="210" y1="230" x2="150" y2="90" class="ray"/>
+    <circle cx="150" cy="90" r="5" class="unk"/>
+    <text x="155" y="85" class="lbl">P</text>
+  </g>
+
+  <!-- Right: resection, 3 known points + 2 observed angles at unknown station -->
+  <g>
+    <text x="320" y="55" class="leg">Resección: 3 puntos conocidos, 2 ángulos observados</text>
+    <circle cx="350" cy="250" r="5" class="known"/>
+    <text x="330" y="270" class="lbl">P1</text>
+    <circle cx="520" cy="250" r="5" class="known"/>
+    <text x="525" y="270" class="lbl">P2</text>
+    <circle cx="430" cy="150" r="5" class="known"/>
+    <text x="435" y="140" class="lbl">P3</text>
+    <circle cx="430" cy="220" r="5" class="unk"/>
+    <text x="440" y="235" class="lbl">P (incógnita)</text>
+    <line x1="350" y1="250" x2="430" y2="220" class="ray" stroke-dasharray="3 3"/>
+    <line x1="520" y1="250" x2="430" y2="220" class="ray" stroke-dasharray="3 3"/>
+    <line x1="430" y1="150" x2="430" y2="220" class="ray" stroke-dasharray="3 3"/>
+    <path d="M 405 225 A 20 20 0 0 1 400 205" fill="none" stroke="#888" stroke-width="1.2"/>
+    <text x="378" y="222" class="leg" font-size="10">ang. 1</text>
+    <path d="M 460 220 A 20 20 0 0 0 450 202" fill="none" stroke="#888" stroke-width="1.2"/>
+    <text x="462" y="210" class="leg" font-size="10">ang. 2</text>
+  </g>
+</svg>

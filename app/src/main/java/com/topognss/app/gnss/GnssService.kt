@@ -31,6 +31,7 @@ import java.util.Locale
 class GnssService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var updater: Job? = null
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -44,6 +45,14 @@ class GnssService : Service() {
             // Android 14+ puede rechazarlo si faltan permisos de dispositivo conectado: seguimos sin servicio.
             stopSelf()
             return START_NOT_STICKY
+        }
+        // Con la pantalla apagada el Wi-Fi entra en ahorro de energía y corta el flujo de datos
+        if (wifiLock == null) {
+            wifiLock = runCatching {
+                (applicationContext.getSystemService(WIFI_SERVICE) as android.net.wifi.WifiManager)
+                    .createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "topognss:gnss")
+                    .apply { setReferenceCounted(false); acquire() }
+            }.getOrNull()
         }
         updater?.cancel()
         val gnss = (application as TopoApp).gnss
@@ -82,6 +91,8 @@ class GnssService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { wifiLock?.release() }
+        wifiLock = null
         scope.cancel()
         super.onDestroy()
     }

@@ -5,7 +5,12 @@ import com.topognss.app.cogo.P3
 import com.topognss.app.geo.CrsType
 import com.topognss.app.geo.LocalGeodesy
 import com.topognss.app.geo.ProjectCrs
+import com.topognss.app.export.DxfExporter
+import com.topognss.app.export.DxfPoint
 import com.topognss.app.gnss.NmeaAggregator
+import com.topognss.app.importer.CsvCol
+import com.topognss.app.importer.CsvOrder
+import com.topognss.app.importer.PointCsv
 import com.topognss.app.gnss.NmeaParser
 import com.topognss.app.gnss.SolutionType
 import org.junit.Assert.assertEquals
@@ -79,6 +84,84 @@ class CoreLogicTest {
         assertEquals(0.015, e.vrms!!, 1e-12)
         assertEquals(39.0, agg.state.ellipsoidalHeight!!, 1e-9)
         assertEquals(1.2, agg.state.pdop!!, 1e-12)
+    }
+
+    @Test fun parsesEmlidLlh() {
+        val agg = NmeaAggregator { 1000L }
+        val line = "2026/10/24 20:44:04.000  -32.920782726  -64.123456789   520.1234   1  25   0.0030   0.0040   0.0150   0.0010  -0.0020   0.0030   1.00  999.9"
+        val e = agg.accept(line)
+        assertNotNull(e)
+        assertEquals(SolutionType.FIX, e!!.solution)
+        assertEquals(-32.920782726, e.lat, 1e-12)
+        assertEquals(0.005, e.hrms!!, 1e-12)
+        assertEquals(0.015, e.vrms!!, 1e-12)
+        assertNull(e.altitudeMsl)
+        assertEquals(520.1234, agg.state.ellipsoidalHeight!!, 1e-9)
+        assertEquals("LLH", agg.state.format)
+        assertEquals(25, agg.state.satellites)
+    }
+
+    @Test fun llhFloatAndGarbage() {
+        val agg = NmeaAggregator { 0L }
+        val e = agg.accept("2026/10/24 20:44:05.000 -32.9 -64.1 520.0 2 18 0.05 0.05 0.10")
+        assertEquals(SolutionType.FLOAT, e!!.solution)
+        assertNull(agg.accept("hola mundo"))
+    }
+
+    @Test fun csvWithSpanishHeaderSemicolonAndDecimalComma() {
+        val txt = "Nombre;Este;Norte;Cota;Código\nP1;5432100,25;6352145,50;520,10;BM\nP2;5432110,00;6352150,00;;esq\n;x;y;;\n"
+        val r = PointCsv.parse(txt)
+        assertEquals(';', r.delimiter)
+        assertNotNull(r.headerCols)
+        assertEquals(2, r.points.size)
+        assertEquals(1, r.skipped)
+        assertEquals("P1", r.points[0].name)
+        assertEquals(5432100.25, r.points[0].e!!, 1e-9)
+        assertEquals(6352145.50, r.points[0].n!!, 1e-9)
+        assertEquals(520.10, r.points[0].z!!, 1e-9)
+        assertEquals("BM", r.points[0].desc)
+        assertNull(r.points[1].z)
+    }
+
+    @Test fun csvWithoutHeaderUsesChosenOrder() {
+        val txt = "1,6352145.5,5432100.25,520.1,PIQ\n2 , 6352150 , 5432110 , 521 , PIQ"
+        val r = PointCsv.parse(txt, CsvOrder.PNEZD)
+        assertNull(r.headerCols)
+        assertEquals(2, r.points.size)
+        assertEquals(5432100.25, r.points[0].e!!, 1e-9)
+        assertEquals(6352145.5, r.points[0].n!!, 1e-9)
+        val spaces = PointCsv.parse("A 100.0 200.0 10.0\nB 101.0 201.0 11.0", CsvOrder.PENZD)
+        assertEquals(' ', spaces.delimiter)
+        assertEquals(2, spaces.points.size)
+    }
+
+    @Test fun csvReadsAppOwnExport() {
+        val txt = "# Proyecto: X\nNombre,Este,Norte,Cota,Codigo,Tipo,Latitud,Longitud\nP001,5432100.1,6352145.2,520.3,,SURVEY,-32.9,-64.1\n"
+        val r = PointCsv.parse(txt)
+        assertEquals(CsvCol.NAME, r.headerCols!![0])
+        assertEquals(1, r.points.size)
+        assertTrue(!r.points[0].isGeographic)
+    }
+
+    @Test fun csvGeographic() {
+        val r = PointCsv.parse("P,Lat,Lon,H\nA,-32.92,-64.12,500")
+        assertTrue(r.points[0].isGeographic)
+        assertEquals(-64.12, r.points[0].lon!!, 1e-12)
+    }
+
+    @Test fun dxfHasLayersPointsAndLabels() {
+        val dxf = DxfExporter.build(
+            listOf(DxfPoint("P1", "Esquina", "Relevado", "RELEVADO", 5432100.0, 6352145.0, 520.0)),
+        )
+        assertTrue(dxf.startsWith("0\nSECTION\n2\nHEADER"))
+        assertTrue(dxf.contains("AC1009"))
+        assertTrue(dxf.contains("0\nPOINT\n8\nPUNTOS_RELEVADO\n10\n5432100.0000\n20\n6352145.0000\n30\n520.0000"))
+        assertTrue(dxf.contains("8\nNOMBRE\n"))
+        assertTrue(dxf.contains("1\nP1\n"))
+        assertTrue(dxf.contains("8\nDESCRIPCION\n"))
+        assertTrue(dxf.contains("1\nEsquina\n"))
+        assertTrue(dxf.contains("8\nTIPO\n"))
+        assertTrue(dxf.trimEnd().endsWith("0\nEOF"))
     }
 
     @Test fun noEpochWithoutFix() {

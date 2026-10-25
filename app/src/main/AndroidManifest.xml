@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <!-- Android 12+: conectar con dispositivos ya emparejados -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Android 12+: buscar receptores cercanos para emparejarlos desde la app (no se usa para ubicación) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
 
     <!-- Ubicación (requerida por Bluetooth en Android ≤ 11 y para declinación/escaneos) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -17,6 +19,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Pedir la red Wi-Fi del receptor (sin Internet) para que Android no la abandone -->
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Servicio en primer plano para mantener la conexión con pantalla apagada -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -28,7 +33,10 @@
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
         android:name=".TopoApp"
@@ -40,6 +48,12 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.TopoGNSS"
         tools:targetApi="35">
+
+        <!-- Clave de Google Maps (inyectada desde Gradle; vacía = se usa el mapa OpenStreetMap/Esri) -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
 
         <activity
             android:name=".MainActivity"

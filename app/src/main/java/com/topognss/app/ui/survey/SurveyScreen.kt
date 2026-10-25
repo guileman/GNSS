@@ -2,6 +2,38 @@ package com.topognss.app.ui.survey
 
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Straighten
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import com.topognss.app.ui.components.StatusChip
+import com.topognss.app.data.pointKind
+import com.topognss.app.ui.components.KindBadge
+import com.topognss.app.ui.theme.solutionColor
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -83,6 +115,8 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     val gnss = topo.gnss.state
     val project = hold(activeProjectFlow(), null)
     val recent = hold(activePointsFlow().map { l -> l.filter { it.kind == PointKind.SURVEY.name }.reversed() }, emptyList())
+    /** Todos los puntos del proyecto (relevados, COGO, a replantear…) para dibujarlos en el mapa. */
+    val all = hold(activePointsFlow(), emptyList<PointEntity>())
 
     var epochs by mutableStateOf(prefs.surveyEpochs)
     var maxHrms by mutableStateOf(prefs.surveyMaxHrms.toString())
@@ -95,6 +129,9 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     var message by mutableStateOf<String?>(null)
     var lastSaved by mutableStateOf<PointEntity?>(null)
     private var job: Job? = null
+
+    /** Deja el punto como objetivo de Replanteo (la pantalla de replanteo lo toma de acá). */
+    fun stake(p: PointEntity) { topo.stakeTarget.value = p.id }
 
     fun refreshName(p: ProjectEntity?) {
         if (p == null) return
@@ -220,14 +257,28 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     }
 }
 
+/**
+ * Levantamiento (estilo Emlid Flow): el mapa ocupa toda la pantalla; "+" abre el panel para medir.
+ * Atajos con nombre en el mapa: Cálculo y Puntos a la izquierda, Replantear a la derecha.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SurveyScreen(onOpenProjects: () -> Unit, vm: SurveyViewModel = viewModel()) {
+fun SurveyScreen(
+    onOpenProjects: () -> Unit,
+    onOpenPoints: () -> Unit,
+    onOpenCogo: () -> Unit,
+    onOpenStakeout: () -> Unit,
+    onOpenSettings: () -> Unit,
+    vm: SurveyViewModel = viewModel(),
+) {
     val project by vm.project.collectAsState()
     val s by vm.gnss.collectAsState()
-    val recent by vm.recent.collectAsState()
+    val all by vm.all.collectAsState()
     var showSettings by rememberSaveable { mutableStateOf(false) }
-    var showMap by rememberSaveable { mutableStateOf(true) }
+    var panelOpen by rememberSaveable { mutableStateOf(false) }
+    // Punto tocado en el mapa: muestra su ficha con el atajo Replantear
+    var tappedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val tapped = all.firstOrNull { it.id == tappedId }
 
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -239,104 +290,248 @@ fun SurveyScreen(onOpenProjects: () -> Unit, vm: SurveyViewModel = viewModel()) 
     val p = project
     if (p == null) { NoProjectCard(onOpenProjects); return }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        // Posición actual en el sistema del proyecto
-        Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Column(Modifier.padding(12.dp)) {
-                val xy = if (s.lat != null && s.lon != null) p.crs().projection.forward(s.lat!!, s.lon!!) else null
-                Text(p.crs().describe(), style = MaterialTheme.typography.labelSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Coord("E", (xy?.east).f(3))
-                    Coord("N", (xy?.north).f(3))
-                    Coord("H", (s.altitudeMsl?.minus(parseNum(vm.antennaHeight) ?: 0.0)).f(3))
-                }
-            }
-        }
+    val connected = s.connection == ConnectionStatus.CONNECTED
+    val ready = connected && s.hasPosition
+    val prog = vm.progress
 
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Épocas:", Modifier.padding(end = 6.dp))
-            listOf(1, 5, 10, 30).forEach { n ->
-                FilterChip(selected = vm.epochs == n, onClick = { vm.epochs = n }, label = { Text("$n") },
-                    modifier = Modifier.padding(end = 4.dp))
-            }
-            TextButton(onClick = { showSettings = !showSettings }) { Text(if (showSettings) "Ocultar" else "Filtros") }
-        }
-        if (showSettings) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NumberField(vm.maxHrms, { vm.maxHrms = it }, "HRMS máx", Modifier.weight(1f), "m")
-                NumberField(vm.maxVrms, { vm.maxVrms = it }, "VRMS máx", Modifier.weight(1f), "m")
-                NumberField(vm.antennaHeight, { vm.antennaHeight = it }, "Alt. antena", Modifier.weight(1f), "m")
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(checked = vm.requireFix, onCheckedChange = { vm.requireFix = it })
-                Text("  Exigir solución FIX", Modifier.weight(1f))
-                OutlinedButton(onClick = { vm.saveSettings(); showSettings = false }) { Text("Guardar") }
-            }
-            Text(
-                "Altura de antena: se resta a la cota recibida. Ponela en 0 si ya la configuraste en el receptor.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-            OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.weight(1f))
-            OutlinedTextField(vm.code, { vm.code = it }, label = { Text("Código / descripción") }, singleLine = true, modifier = Modifier.weight(1.4f))
-        }
-
-        val prog = vm.progress
-        if (prog == null) {
-            val ready = s.connection == ConnectionStatus.CONNECTED && s.hasPosition
-            Button(
-                onClick = { vm.measure() },
-                enabled = ready,
-                colors = ButtonDefaults.buttonColors(containerColor = if (s.solution == SolutionType.FIX) FixGreen else MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(64.dp),
-            ) { Text(if (ready) "MEDIR PUNTO" else "Sin posición", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-        } else {
-            Card(Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Midiendo ${prog.accepted}/${prog.target} épocas · rechazadas ${prog.rejected}", fontWeight = FontWeight.Bold)
-                    LinearProgressIndicator(progress = { prog.accepted / prog.target.toFloat() }, modifier = Modifier.fillMaxWidth())
-                    prog.lastReason?.let { Text("Último rechazo: $it", style = MaterialTheme.typography.bodySmall) }
-                    OutlinedButton(onClick = { vm.cancel() }) { Text("Cancelar") }
-                }
-            }
-        }
-        vm.message?.let { Text(it, color = if (it.startsWith("✔")) FixGreen else MaterialTheme.colorScheme.error) }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SectionTitle("Puntos relevados (${recent.size})")
-            Spacer(Modifier.weight(1f))
-            FilterChip(selected = showMap, onClick = { showMap = true }, label = { Text("Mapa") },
-                modifier = Modifier.padding(end = 4.dp))
-            FilterChip(selected = !showMap, onClick = { showMap = false }, label = { Text("Lista") })
-        }
-        if (showMap) {
+    Column(Modifier.fillMaxSize().imePadding()) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             TopoMap(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 4.dp),
-                points = recent.map { it.toMapPoint() },
+                modifier = Modifier.fillMaxSize(),
+                points = all.map { it.toMapPoint() },
                 me = s.toMapMe(),
-                fitKey = recent.size,
+                fitKey = p.id to all.size,
+                onPointTap = { id -> tappedId = id; panelOpen = false },
             )
-        } else LazyColumn(Modifier.weight(1f)) {
-            items(recent, key = { it.id }) { pt ->
-                Column {
-                    PointRow(pt)
-                    Text(
-                        "   σH ${pt.hrms.f(3)}  σV ${pt.vrms.f(3)}  ${pt.epochs} ép.",
-                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+            // Proyecto activo (toca para cambiar) + Ajustes, arriba a la izquierda
+            Row(
+                Modifier.align(Alignment.TopStart).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Surface(
+                    onClick = onOpenProjects,
+                    shape = RoundedCornerShape(24.dp),
+                    shadowElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(Icons.Filled.Folder, contentDescription = null, Modifier.size(18.dp))
+                        Text(
+                            p.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 170.dp),
+                        )
+                    }
+                }
+                Surface(
+                    onClick = onOpenSettings,
+                    shape = CircleShape,
+                    shadowElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                ) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Ajustes", Modifier.padding(10.dp).size(22.dp))
+                }
+            }
+
+            // Atajos + "+" + chips de estado, abajo del mapa
+            Column(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(Modifier.fillMaxWidth()) {
+                    Column(Modifier.align(Alignment.BottomStart), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MapRoundButton(Icons.Filled.Straighten, "Cálculo", onOpenCogo)
+                        MapRoundButton(Icons.AutoMirrored.Filled.List, "Puntos", onOpenPoints)
+                    }
+                    MapRoundButton(
+                        Icons.Filled.NearMe, "Replantear", onOpenStakeout,
+                        modifier = Modifier.align(Alignment.BottomEnd),
                     )
-                    HorizontalDivider()
+                    if (!panelOpen) {
+                        FloatingActionButton(
+                            onClick = { panelOpen = true; tappedId = null },
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            shape = CircleShape,
+                            containerColor = Color(0xFF263238),
+                            contentColor = Color.White,
+                        ) { Icon(Icons.Filled.Add, contentDescription = "Medir punto") }
+                    }
+                }
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).clickable { showSettings = true },
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        Modifier.background(Color(0xFF37474F), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Ajustes de medición", tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
+                    if (ready) StatusChip(s.solution.label, container = solutionColor(s.solution))
+                    else StatusChip("Sin posición", container = Color(0xFF546E7A))
+                    StatusChip("H ${s.hrms.f(3)}  V ${s.vrms.f(3)}")
+                    StatusChip("Ht ${parseNum(vm.antennaHeight).f(3)}")
+                }
+            }
+        }
+
+        if (tapped != null && !panelOpen) {
+            Surface(
+                shadowElevation = 8.dp,
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(tapped.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                                KindBadge(tapped.pointKind())
+                            }
+                            if (tapped.code.isNotBlank()) {
+                                Text(tapped.code, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(
+                                "E ${tapped.easting.f(3)}  N ${tapped.northing.f(3)}  H ${tapped.elevation.f(3)}",
+                                fontFamily = FontFamily.Monospace, fontSize = 11.sp, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = { tappedId = null }) { Icon(Icons.Filled.Close, contentDescription = "Cerrar") }
+                    }
+                    Button(
+                        onClick = { vm.stake(tapped); tappedId = null; onOpenStakeout() },
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) {
+                        Icon(Icons.Filled.NearMe, contentDescription = null, Modifier.size(20.dp))
+                        Text("  Replantear", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        if (panelOpen) {
+            Surface(
+                shadowElevation = 8.dp,
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Nuevo punto", style = MaterialTheme.typography.titleMedium)
+                            val xy = if (s.lat != null && s.lon != null) p.crs().projection.forward(s.lat!!, s.lon!!) else null
+                            val h = s.altitudeMsl?.minus(parseNum(vm.antennaHeight) ?: 0.0)
+                            Text(
+                                "E ${(xy?.east).f(3)}  N ${(xy?.north).f(3)}  H ${h.f(3)}",
+                                fontFamily = FontFamily.Monospace, fontSize = 11.sp, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = { panelOpen = false }) { Icon(Icons.Filled.Close, contentDescription = "Cerrar") }
+                    }
+
+                    if (prog == null) {
+                        Button(
+                            onClick = { vm.measure() },
+                            enabled = ready,
+                            shape = RoundedCornerShape(28.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (s.solution == SolutionType.FIX) FixGreen else MaterialTheme.colorScheme.primary,
+                            ),
+                            modifier = Modifier.fillMaxWidth().height(60.dp),
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Medir", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                if (!ready) {
+                                    Text(
+                                        if (!connected) "No hay ningún receptor conectado" else "Esperando posición…",
+                                        fontSize = 12.sp, maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Midiendo ${prog.accepted}/${prog.target} épocas · rechazadas ${prog.rejected}", fontWeight = FontWeight.Bold)
+                                LinearProgressIndicator(progress = { prog.accepted / prog.target.toFloat() }, modifier = Modifier.fillMaxWidth())
+                                prog.lastReason?.let { Text("Último rechazo: $it", style = MaterialTheme.typography.bodySmall) }
+                                OutlinedButton(onClick = { vm.cancel() }) { Text("Cancelar") }
+                            }
+                        }
+                    }
+                    vm.message?.let { Text(it, color = if (it.startsWith("✔")) FixGreen else MaterialTheme.colorScheme.error) }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1f))
+                        OutlinedTextField(vm.code, { vm.code = it }, label = { Text("Descripción", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1.4f))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Épocas", Modifier.padding(end = 4.dp))
+                        listOf(1, 5, 10, 30).forEach { n ->
+                            FilterChip(selected = vm.epochs == n, onClick = { vm.epochs = n }, label = { Text("$n", maxLines = 1) })
+                        }
+                    }
                 }
             }
         }
     }
+
+    if (showSettings) {
+        AlertDialog(
+            onDismissRequest = { showSettings = false },
+            title = { Text("Ajustes de medición") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(vm.maxHrms, { vm.maxHrms = it }, "HRMS máx", Modifier.fillMaxWidth(), "m")
+                    NumberField(vm.maxVrms, { vm.maxVrms = it }, "VRMS máx", Modifier.fillMaxWidth(), "m")
+                    NumberField(vm.antennaHeight, { vm.antennaHeight = it }, "Altura de antena", Modifier.fillMaxWidth(), "m")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = vm.requireFix, onCheckedChange = { vm.requireFix = it })
+                        Text("  Exigir solución FIX", Modifier.weight(1f))
+                    }
+                    Text(
+                        "La altura de antena se resta a la cota recibida. Ponela en 0 si ya la configuraste en el receptor.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.saveSettings(); showSettings = false }) { Text("Guardar") } },
+            dismissButton = { TextButton(onClick = { showSettings = false }) { Text("Cancelar") } },
+        )
+    }
 }
 
 @Composable
-private fun Coord(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall)
-        Text(value, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+private fun MapRoundButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    // Botón redondo con su nombre debajo: los íconos solos no se entendían (p. ej. no se encontraba Replanteo)
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        FloatingActionButton(
+            onClick = onClick,
+            shape = CircleShape,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) { Icon(icon, contentDescription = label) }
+        Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)) {
+            Text(
+                label, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
     }
 }
