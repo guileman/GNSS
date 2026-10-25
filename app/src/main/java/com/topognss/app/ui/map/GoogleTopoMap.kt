@@ -251,7 +251,7 @@ private fun textPaints(density: Float): Pair<Paint, Paint> {
 }
 
 /** Círculo de color con su nombre a la derecha. Devuelve el ícono y el ancla (centro del círculo). */
-private fun pointIcon(label: String, color: Color, radiusDp: Float, density: Float, dashedRing: Boolean): Pair<BitmapDescriptor, Offset> {
+private fun pointIcon(label: String, tint: Color, radiusDp: Float, density: Float, dashedRing: Boolean): Pair<BitmapDescriptor, Offset> {
     val (text, halo) = textPaints(density)
     val r = radiusDp * density
     val pad = 4f * density
@@ -267,13 +267,13 @@ private fun pointIcon(label: String, color: Color, radiusDp: Float, density: Flo
         style = Paint.Style.STROKE; strokeWidth = 2.5f * density; color = android.graphics.Color.WHITE
     }
     if (dashedRing) {
-        fill.color = color.copy(alpha = 0.35f).toArgb()
+        fill.color = tint.copy(alpha = 0.35f).toArgb()
         c.drawCircle(cx, cy, r, fill)
-        stroke.color = color.toArgb()
+        stroke.color = tint.toArgb()
         stroke.pathEffect = DashPathEffect(floatArrayOf(5f * density, 3f * density), 0f)
         c.drawCircle(cx, cy, r, stroke)
     } else {
-        fill.color = color.toArgb()
+        fill.color = tint.toArgb()
         c.drawCircle(cx, cy, r, fill)
         c.drawCircle(cx, cy, r, stroke)
     }
@@ -285,7 +285,7 @@ private fun pointIcon(label: String, color: Color, radiusDp: Float, density: Flo
 }
 
 /** Diana del objetivo de replanteo con su nombre. */
-private fun targetIcon(label: String, color: Color, density: Float): Pair<BitmapDescriptor, Offset> {
+private fun targetIcon(label: String, tint: Color, density: Float): Pair<BitmapDescriptor, Offset> {
     val (text, halo) = textPaints(density)
     val rr = 12f * density
     val arm = rr * 1.6f
@@ -296,7 +296,7 @@ private fun targetIcon(label: String, color: Color, density: Float): Pair<Bitmap
     val c = Canvas(bmp)
     val cx = arm + 2f * density
     val cy = h / 2f
-    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f * density; color = color.toArgb() }
+    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f * density; color = tint.toArgb() }
     val white = Paint(p).apply { color = android.graphics.Color.WHITE; strokeWidth = 5f * density }
     c.drawCircle(cx, cy, rr, white)
     c.drawCircle(cx, cy, rr, p)
@@ -308,12 +308,12 @@ private fun targetIcon(label: String, color: Color, density: Float): Pair<Bitmap
 }
 
 /** Punto de la posición actual. */
-private fun dotIcon(color: Color, density: Float): Pair<BitmapDescriptor, Offset> {
+private fun dotIcon(tint: Color, density: Float): Pair<BitmapDescriptor, Offset> {
     val r = 9f * density
     val s = (2 * r + 6f * density).toInt()
     val bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
     val c = Canvas(bmp)
-    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = color.toArgb() }
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint.toArgb() }
     val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = 2.5f * density; color = android.graphics.Color.WHITE
     }
