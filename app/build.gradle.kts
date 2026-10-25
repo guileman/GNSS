@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,7 +20,7 @@ android {
         versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
         // Clave de Google Maps: variable de entorno MAPS_API_KEY (secreto de GitHub en CI) o
         // MAPS_API_KEY=... en local.properties. Sin clave la app usa el mapa OpenStreetMap/Esri.
-        val localProps = java.util.Properties().apply {
+        val localProps = Properties().apply {
             val f = rootProject.file("local.properties")
             if (f.exists()) f.inputStream().use { load(it) }
         }
