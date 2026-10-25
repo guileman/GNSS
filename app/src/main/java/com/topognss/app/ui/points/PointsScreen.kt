@@ -9,6 +9,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,6 +69,11 @@ import com.topognss.app.data.PointKind
 import com.topognss.app.data.TopoRepository
 import com.topognss.app.data.crs
 import com.topognss.app.importer.ImportFormat
+import com.topognss.app.data.pointKind
+import com.topognss.app.export.DxfPoint
+import com.topognss.app.export.DxfExporter
+import com.topognss.app.importer.PointCsv
+import com.topognss.app.importer.CsvOrder
 import com.topognss.app.importer.detectFormat
 import com.topognss.app.importer.parseDxf
 import com.topognss.app.importer.parseKml
@@ -126,13 +133,20 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { message = "Error: ${it.message}" }
     }
 
-    /** Importa puntos desde un DXF (planas) o un KML/KMZ (geográficas), uno por vértice. */
+    /** Archivo CSV/TXT leído, a la espera de que el usuario confirme columnas y tipo en el diálogo. */
+    var csvPending by mutableStateOf<Pair<String, String>?>(null)
+
+    /** Importa puntos desde un DXF (planas), un KML/KMZ (geográficas) o un CSV/TXT de coordenadas. */
     fun importFile(uri: android.net.Uri, fileName: String?) = viewModelScope.launch {
         val proj = project.value ?: return@launch
         val format = detectFormat(fileName)
-        if (format == null) { message = "Formato no soportado: usá un archivo .dxf, .kml o .kmz"; return@launch }
         val text = runCatching { readImportableText(topo, uri, fileName) }.getOrNull()
         if (text.isNullOrBlank()) { message = "No se pudo leer el archivo"; return@launch }
+        if (format == null) {
+            // CSV, TXT o extensión desconocida: se trata como planilla de coordenadas
+            csvPending = (fileName ?: "archivo") to text
+            return@launch
+        }
 
         var count = 0
         when (format) {
@@ -153,6 +167,72 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         message = if (count > 0) "Se importaron $count puntos (prefijo IMP)" else "No se encontraron puntos para importar en el archivo"
+    }
+
+    /**
+     * Importa las filas del CSV. Nombres del archivo cuando los hay (si se repiten se agrega _2, _3…),
+     * si no IMP001, IMP002… La descripción va al código del punto.
+     */
+    fun importCsv(text: String, fileName: String, order: CsvOrder, kind: PointKind) = viewModelScope.launch {
+        val proj = project.value ?: return@launch
+        val parsed = PointCsv.parse(text, order)
+        var ok = 0
+        for (r in parsed.points) {
+            var name = r.name?.trim()?.takeIf { it.isNotEmpty() } ?: repo.nextName(proj.id, "IMP")
+            if (repo.nameExists(proj.id, name)) {
+                var i = 2
+                while (repo.nameExists(proj.id, "${name}_$i")) i++
+                name = "${name}_$i"
+            }
+            val note = "Importado de $fileName"
+            val res = if (r.isGeographic) {
+                runCatching {
+                    repo.insertGeographic(
+                        proj,
+                        PointEntity(
+                            projectId = proj.id, name = name, code = r.desc, kind = kind.name,
+                            lat = r.lat!!, lon = r.lon!!, easting = 0.0, northing = 0.0, elevation = r.z, note = note,
+                        ),
+                    )
+                }
+            } else {
+                runCatching { repo.insertPlane(proj, name, r.desc, P3(r.e!!, r.n!!, r.z), kind, note) }
+            }
+            if (res.isSuccess) ok++
+        }
+        csvPending = null
+        message = "Se importaron $ok puntos" + if (parsed.skipped > 0) " (${parsed.skipped} líneas sin coordenadas válidas)" else ""
+    }
+
+    /**
+     * DXF con un POINT 3D por punto (capa por tipo) y etiquetas de nombre, descripción y tipo en capas
+     * NOMBRE / DESCRIPCION / TIPO. Respeta el filtro de tipo activo en la lista.
+     */
+    fun exportDxf(list: List<PointEntity>): Intent? {
+        val proj = project.value ?: return null
+        val dir = File(topo.cacheDir, "export").apply { mkdirs() }
+        val safe = proj.name.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val file = File(dir, "${safe}_puntos.dxf")
+        val pts = list.map { p ->
+            val k = p.pointKind()
+            DxfPoint(
+                name = p.name, description = p.code, type = k.label,
+                typeLayer = when (k) {
+                    PointKind.SURVEY -> "RELEVADO"; PointKind.COGO -> "COGO"
+                    PointKind.STAKE -> "A_REPLANTEAR"; PointKind.STAKED -> "REPLANTEADO"
+                },
+                e = p.easting, n = p.northing, z = p.elevation,
+            )
+        }
+        // DXF R12 en ANSI 1252 (acentos legibles en AutoCAD)
+        file.writeBytes(DxfExporter.build(pts).toByteArray(charset("windows-1252")))
+        val uri = FileProvider.getUriForFile(topo, "${topo.packageName}.fileprovider", file)
+        return Intent(Intent.ACTION_SEND).apply {
+            type = "application/dxf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Puntos ${proj.name} (DXF)")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
     }
 
     fun exportCsv(): Intent? {
@@ -209,8 +289,15 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, onBack: () -> 
                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Más opciones") }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Importar DXF / KML") },
+                            text = { Text("Importar (CSV, TXT, DXF, KML)") },
                             onClick = { menuOpen = false; importLauncher.launch(arrayOf("*/*")) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Exportar DXF") },
+                            onClick = {
+                                menuOpen = false
+                                vm.exportDxf(shown)?.let { context.startActivity(Intent.createChooser(it, "Exportar DXF")) }
+                            },
                         )
                         DropdownMenuItem(
                             text = { Text("Exportar CSV") },
@@ -284,6 +371,13 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, onBack: () -> 
             onPhotoResult = { path -> vm.setPhoto(live, path) },
         )
     }
+    vm.csvPending?.let { (fileName, text) ->
+        CsvImportDialog(
+            fileName = fileName, text = text,
+            onDismiss = { vm.csvPending = null },
+            onImport = { order, kind -> vm.importCsv(text, fileName, order, kind) },
+        )
+    }
     if (showAdd) {
         AddPointDialog(onDismiss = { showAdd = false }) { n, c, e, nn, h ->
             vm.addManual(n, c, e, nn, h); showAdd = false
@@ -316,8 +410,8 @@ private fun PointDetailDialog(
         title = { Text("Punto ${p.name}") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true)
-                OutlinedTextField(code, { code = it }, label = { Text("Código") }, singleLine = true)
+                OutlinedTextField(name, { name = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true)
+                OutlinedTextField(code, { code = it }, label = { Text("Código", maxLines = 1) }, singleLine = true)
                 PointPhotoRow(
                     photoPath = p.photoPath,
                     onTakePhoto = {
@@ -393,8 +487,8 @@ private fun AddPointDialog(onDismiss: () -> Unit, onAdd: (String, String, Double
         title = { Text("Punto a replantear") },
         text = {
             Column {
-                OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true)
-                OutlinedTextField(code, { code = it }, label = { Text("Código") }, singleLine = true)
+                OutlinedTextField(name, { name = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true)
+                OutlinedTextField(code, { code = it }, label = { Text("Código", maxLines = 1) }, singleLine = true)
                 NumberField(e, { e = it }, "Este", suffix = "m")
                 NumberField(n, { n = it }, "Norte", suffix = "m")
                 NumberField(h, { h = it }, "Cota (opcional)", suffix = "m")
@@ -402,6 +496,78 @@ private fun AddPointDialog(onDismiss: () -> Unit, onAdd: (String, String, Double
         },
         confirmButton = {
             TextButton(enabled = ok, onClick = { onAdd(name, code, parseNum(e)!!, parseNum(n)!!, parseNum(h)) }) { Text("Agregar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+/**
+ * Importar CSV/TXT: muestra cómo se interpretó el archivo (separador, encabezado y las primeras filas),
+ * deja elegir el orden de columnas cuando no hay encabezado y el tipo con que se guardan los puntos.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CsvImportDialog(
+    fileName: String,
+    text: String,
+    onDismiss: () -> Unit,
+    onImport: (CsvOrder, PointKind) -> Unit,
+) {
+    var order by remember { mutableStateOf(CsvOrder.PENZD) }
+    var kind by remember { mutableStateOf(PointKind.STAKE) }
+    val parsed = remember(text, order) { PointCsv.parse(text, order) }
+    val delimName = when (parsed.delimiter) { ';' -> "punto y coma"; '\t' -> "tabulación"; ',' -> "coma"; else -> "espacios" }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Importar puntos") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(fileName, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                Text(
+                    "Separador: $delimName · " + if (parsed.headerCols != null) "encabezado reconocido" else "sin encabezado",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (parsed.headerCols == null) {
+                    Text("Orden de columnas", style = MaterialTheme.typography.titleSmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        CsvOrder.entries.forEach { o ->
+                            FilterChip(selected = order == o, onClick = { order = o }, label = { Text(o.label, maxLines = 1) })
+                        }
+                    }
+                    Text(
+                        "P = punto, E = este, N = norte, Z = cota, D = descripción.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text("Vista previa", style = MaterialTheme.typography.titleSmall)
+                if (parsed.points.isEmpty()) {
+                    Text("No se encontraron coordenadas válidas con este orden.", color = MaterialTheme.colorScheme.error)
+                }
+                parsed.points.take(5).forEach { r ->
+                    Text(
+                        (r.name ?: "(sin nombre)") + "  " +
+                            (if (r.isGeographic) "Lat ${r.lat.f(7)}  Lon ${r.lon.f(7)}" else "E ${r.e.f(3)}  N ${r.n.f(3)}") +
+                            "  Z ${r.z.f(3)}" + if (r.desc.isNotBlank()) "  ${r.desc}" else "",
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                    )
+                }
+                if (parsed.points.size > 5) Text("… y ${parsed.points.size - 5} más", style = MaterialTheme.typography.bodySmall)
+                if (parsed.skipped > 0) {
+                    Text("${parsed.skipped} líneas se van a omitir (sin coordenadas válidas).", style = MaterialTheme.typography.bodySmall)
+                }
+                Text("Guardar como", style = MaterialTheme.typography.titleSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(PointKind.STAKE, PointKind.COGO).forEach { k ->
+                        FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(if (k == PointKind.COGO) "Cálculo (COGO)" else k.label, maxLines = 1) })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = parsed.points.isNotEmpty(), onClick = { onImport(order, kind) }) {
+                Text("Importar ${parsed.points.size}")
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )

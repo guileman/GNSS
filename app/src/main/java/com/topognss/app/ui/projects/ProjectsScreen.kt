@@ -174,8 +174,8 @@ private fun ProjectDialog(
         title = { Text(if (initial == null) "Nuevo proyecto" else "Editar proyecto") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true)
-                OutlinedTextField(desc, { desc = it }, label = { Text("Descripción") })
+                OutlinedTextField(name, { name = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true)
+                OutlinedTextField(desc, { desc = it }, label = { Text("Descripción", maxLines = 1) })
                 Text("Sistema de coordenadas", style = MaterialTheme.typography.titleSmall)
                 CrsType.entries.forEach { t ->
                     Row(Modifier.fillMaxWidth().clickable { type = t }, verticalAlignment = Alignment.CenterVertically) {
@@ -205,15 +205,11 @@ private fun ProjectDialog(
                     "El formato varía por provincia/país; completá solo los campos que uses.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(circ, { circ = it }, label = { Text("Circunscripción") }, singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(secc, { secc = it }, label = { Text("Sección") }, singleLine = true, modifier = Modifier.weight(1f))
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(mzCh, { mzCh = it }, label = { Text("Manzana / Chacra") }, singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(parc, { parc = it }, label = { Text("Parcela") }, singleLine = true, modifier = Modifier.weight(1f))
-                }
-                OutlinedTextField(partida, { partida = it }, label = { Text("Partida inmobiliaria") }, singleLine = true)
+                OutlinedTextField(circ, { circ = it }, label = { Text("Circunscripción", maxLines = 1) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(secc, { secc = it }, label = { Text("Sección", maxLines = 1) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(mzCh, { mzCh = it }, label = { Text("Manzana / Chacra", maxLines = 1) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(parc, { parc = it }, label = { Text("Parcela", maxLines = 1) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(partida, { partida = it }, label = { Text("Partida inmobiliaria", maxLines = 1) }, singleLine = true)
                 if (initial != null) {
                     Text("Si cambiás el sistema se recalculan las planas de todos los puntos.",
                         style = MaterialTheme.typography.bodySmall)

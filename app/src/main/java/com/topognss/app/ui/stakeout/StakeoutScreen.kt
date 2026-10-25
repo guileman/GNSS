@@ -144,8 +144,8 @@ fun StakeoutScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: StakeoutV
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp)) {
             // --- Modo: punto único o eje/alineación ---
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = !vm.alignmentMode, onClick = { vm.alignmentMode = false }, label = { Text("Punto") })
-                FilterChip(selected = vm.alignmentMode, onClick = { vm.alignmentMode = true }, label = { Text("Eje") })
+                FilterChip(selected = !vm.alignmentMode, onClick = { vm.alignmentMode = false }, label = { Text("Punto", maxLines = 1) })
+                FilterChip(selected = vm.alignmentMode, onClick = { vm.alignmentMode = true }, label = { Text("Eje", maxLines = 1) })
             }
             if (vm.alignmentMode) {
                 AlignmentPanel(vm, points, s)

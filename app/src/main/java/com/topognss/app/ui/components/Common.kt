@@ -275,7 +275,7 @@ fun NumberField(
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
-        label = { Text(label) },
+        label = { Text(label, maxLines = 1) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         suffix = if (suffix != null) { { Text(suffix) } } else null,

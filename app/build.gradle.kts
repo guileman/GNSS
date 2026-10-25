@@ -16,6 +16,14 @@ android {
         // En CI se usa el número de ejecución del workflow como versionCode
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        // Clave de Google Maps: variable de entorno MAPS_API_KEY (secreto de GitHub en CI) o
+        // MAPS_API_KEY=... en local.properties. Sin clave la app usa el mapa OpenStreetMap/Esri.
+        val localProps = java.util.Properties().apply {
+            val f = rootProject.file("local.properties")
+            if (f.exists()) f.inputStream().use { load(it) }
+        }
+        manifestPlaceholders["MAPS_API_KEY"] =
+            System.getenv("MAPS_API_KEY")?.takeIf { it.isNotBlank() } ?: localProps.getProperty("MAPS_API_KEY", "")
     }
 
     signingConfigs {
@@ -83,6 +91,9 @@ dependencies {
 
     // Mapa base (OpenStreetMap / Esri / OpenTopoMap) sin clave de API, con caché offline
     implementation("org.osmdroid:osmdroid-android:6.1.20")
+    // Google Maps (Maps SDK for Android, sin costo de uso en apps nativas; requiere clave de API)
+    implementation("com.google.android.gms:play-services-maps:19.0.0")
+    implementation("com.google.maps.android:maps-compose:6.2.1")
 
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")

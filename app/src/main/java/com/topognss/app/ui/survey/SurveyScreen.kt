@@ -478,8 +478,8 @@ fun SurveyScreen(
                     vm.message?.let { Text(it, color = if (it.startsWith("✔")) FixGreen else MaterialTheme.colorScheme.error) }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.weight(1f))
-                        OutlinedTextField(vm.code, { vm.code = it }, label = { Text("Descripción") }, singleLine = true, modifier = Modifier.weight(1.4f))
+                        OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1f))
+                        OutlinedTextField(vm.code, { vm.code = it }, label = { Text("Descripción", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1.4f))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Épocas", Modifier.padding(end = 4.dp))

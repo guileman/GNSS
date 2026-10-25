@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.topognss.app.TopoApp
 import com.topognss.app.ui.components.ScreenHeader
+import com.topognss.app.ui.map.googleMapsAvailable
 import com.topognss.app.ui.theme.ThemeMode
 
 /**
@@ -38,6 +39,8 @@ fun SettingsScreen(onBack: () -> Unit, onOpenPlumb: () -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as TopoApp
     val theme by app.prefs.themeMode.collectAsState()
+    val provider by app.prefs.mapProvider.collectAsState()
+    val googleOk = remember { googleMapsAvailable(context) }
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "—"
     }
@@ -57,6 +60,28 @@ fun SettingsScreen(onBack: () -> Unit, onOpenPlumb: () -> Unit) {
                     ) {
                         RadioButton(selected = theme == m.name, onClick = { app.prefs.setThemeMode(m.name) })
                         Text(m.label)
+                    }
+                }
+            }
+            Section("Mapa") {
+                val options = listOf(
+                    Triple("GOOGLE", "Google Maps", if (googleOk) "Imágenes satelitales de Google. Necesita Internet." else "No disponible: falta la clave de API de Google Maps en esta versión."),
+                    Triple("OSM", "OpenStreetMap / Esri", "Funciona sin Internet en las zonas ya vistas."),
+                )
+                options.forEachIndexed { i, (id, title, sub) ->
+                    if (i > 0) HorizontalDivider()
+                    val enabled = id != "GOOGLE" || googleOk
+                    val selected = if (googleOk) provider == id else id == "OSM"
+                    Row(
+                        Modifier.fillMaxWidth().clickable(enabled = enabled) { app.prefs.setMapProvider(id) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selected, onClick = { app.prefs.setMapProvider(id) }, enabled = enabled)
+                        Column {
+                            Text(title)
+                            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

@@ -72,6 +72,8 @@ import com.topognss.app.ui.components.SectionTitle
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
 import com.topognss.app.ui.hold
+import com.topognss.app.ui.map.MapPoint
+import com.topognss.app.ui.map.PREVIEW_COLOR
 import com.topognss.app.ui.map.TopoMap
 import com.topognss.app.ui.map.toMapPoint
 import com.topognss.app.ui.topo
@@ -289,6 +291,57 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
 
 fun PointEntity.toP3() = P3(easting, northing, elevation)
 
+/** Lo que se dibuja en el mapa para la herramienta activa: líneas punteadas y puntos en vista previa. */
+private data class CogoSketch(
+    val dashed: List<List<P3>> = emptyList(),
+    val points: List<Pair<String, P3>> = emptyList(),
+)
+
+/**
+ * Vista previa del cálculo en curso. Las líneas punteadas representan los parámetros:
+ * estación y desplazamiento (dos tramos en L), prolongación, visuales de intersección,
+ * visuales de la resección, arco y tangentes de la curva, recorrido de la poligonal.
+ */
+private fun sketchFor(tab: Int, sel: List<PointEntity>, vm: CogoViewModel): CogoSketch = runCatching {
+    when (tab) {
+        1 -> {
+            val p = vm.preview(sel).getOrNull() ?: return@runCatching CogoSketch()
+            val a = sel[0].toP3(); val b = sel[1].toP3()
+            val dashed = when (vm.method) {
+                CreateMethod.MIDPOINT -> listOf(listOf(a, b))
+                CreateMethod.EXTEND -> listOf(listOf(b, p))
+                CreateMethod.OFFSET -> {
+                    // Pie de la perpendicular sobre A→B a la distancia "estación": A → pie → punto
+                    val foot = Cogo.stationOffset(a, b, parseNum(vm.station) ?: 0.0, 0.0)
+                    listOf(listOf(a, foot), listOf(foot, p))
+                }
+                CreateMethod.INTERSECTION_AZ, CreateMethod.INTERSECTION_DIST -> listOf(listOf(a, p), listOf(b, p))
+            }
+            CogoSketch(dashed, listOf(vm.newName.ifBlank { "Nuevo" } to p))
+        }
+        2 -> {
+            val p = vm.resectionResult(sel).getOrNull() ?: return@runCatching CogoSketch()
+            CogoSketch(sel.take(3).map { listOf(p, it.toP3()) }, listOf(vm.resectionName.ifBlank { "Estación" } to p))
+        }
+        3 -> {
+            val c = vm.curveResult(sel).getOrNull() ?: return@runCatching CogoSketch()
+            val arc = (0..32).map { c.pointAt(c.length * it / 32.0) }
+            val stakes = vm.curveStakeList(sel).getOrNull().orEmpty()
+                .filter { it.name != (sel.getOrNull(0)?.name ?: "PC") }
+                .map { it.name to it.point }
+            CogoSketch(listOf(arc, listOf(c.pc, c.pi, c.pt)), stakes.ifEmpty { listOf("PT" to c.pt) })
+        }
+        4 -> {
+            val r = vm.traverseResult(sel).getOrNull() ?: return@runCatching CogoSketch()
+            val start = sel[0].toP3()
+            val close = if (sel.size >= 2) sel[1].toP3() else start
+            val path = listOf(start) + r.vertices.map { it.adjusted } + close
+            CogoSketch(listOf(path), r.vertices.map { it.name to it.adjusted })
+        }
+        else -> CogoSketch()
+    }
+}.getOrDefault(CogoSketch())
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel = viewModel()) {
@@ -320,6 +373,9 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
         }
         // Lista de selección (alto acotado) + resultados abajo
         if (selectOnMap) {
+            val tm = proj.crs().projection
+            fun ll(p: P3): Pair<Double, Double> = tm.inverse(p.e, p.n).let { it.lat to it.lon }
+            val sketch = sketchFor(tab, sel, vm)
             TopoMap(
                 modifier = Modifier.fillMaxWidth().height(280.dp),
                 points = all.map { p -> p.toMapPoint(order = vm.selected.indexOf(p.id).takeIf { it >= 0 }?.plus(1)) },
@@ -327,6 +383,8 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
                 closeLine = tab == 0 && vm.closePolygon && sel.size >= 3,
                 fitKey = proj.id,
                 onPointTap = { id -> vm.toggle(id) },
+                dashed = sketch.dashed.map { seg -> seg.map(::ll) },
+                previews = sketch.points.map { (n, p) -> ll(p).let { (la, lo) -> MapPoint(-1, n, la, lo, PREVIEW_COLOR) } },
             )
         } else {
             OrderedPointSelector(all, vm.selected, vm::toggle, Modifier.fillMaxWidth().heightIn(max = 260.dp))
@@ -431,26 +489,22 @@ private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
                 NumberField(vm.offset, { vm.offset = it }, "Desplaz.", Modifier.weight(1f), "m")
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = !vm.offsetRight, onClick = { vm.offsetRight = false }, label = { Text("◀ Izquierda") })
-                FilterChip(selected = vm.offsetRight, onClick = { vm.offsetRight = true }, label = { Text("Derecha ▶") })
+                FilterChip(selected = !vm.offsetRight, onClick = { vm.offsetRight = false }, label = { Text("◀ Izquierda", maxLines = 1) })
+                FilterChip(selected = vm.offsetRight, onClick = { vm.offsetRight = true }, label = { Text("Derecha ▶", maxLines = 1) })
             }
         }
         CreateMethod.INTERSECTION_AZ -> {
             Text("Punto donde se cruzan las visuales observadas desde $a y desde $b (azimut hacia el punto buscado).")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NumberField(vm.azimuthFromA, { vm.azimuthFromA = it }, "Azimut desde $a", Modifier.weight(1f), "°")
-                NumberField(vm.azimuthFromB, { vm.azimuthFromB = it }, "Azimut desde $b", Modifier.weight(1f), "°")
-            }
+            NumberField(vm.azimuthFromA, { vm.azimuthFromA = it }, "Azimut desde $a", Modifier.fillMaxWidth(), "°")
+            NumberField(vm.azimuthFromB, { vm.azimuthFromB = it }, "Azimut desde $b", Modifier.fillMaxWidth(), "°")
         }
         CreateMethod.INTERSECTION_DIST -> {
             Text("Punto a la distancia indicada de $a y de $b. Dos soluciones simétricas respecto de la línea $a-$b.")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NumberField(vm.distFromA, { vm.distFromA = it }, "Distancia desde $a", Modifier.weight(1f), "m")
-                NumberField(vm.distFromB, { vm.distFromB = it }, "Distancia desde $b", Modifier.weight(1f), "m")
-            }
+            NumberField(vm.distFromA, { vm.distFromA = it }, "Distancia desde $a", Modifier.fillMaxWidth(), "m")
+            NumberField(vm.distFromB, { vm.distFromB = it }, "Distancia desde $b", Modifier.fillMaxWidth(), "m")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = !vm.intersectionRight, onClick = { vm.intersectionRight = false }, label = { Text("◀ Izquierda") })
-                FilterChip(selected = vm.intersectionRight, onClick = { vm.intersectionRight = true }, label = { Text("Derecha ▶") })
+                FilterChip(selected = !vm.intersectionRight, onClick = { vm.intersectionRight = false }, label = { Text("◀ Izquierda", maxLines = 1) })
+                FilterChip(selected = vm.intersectionRight, onClick = { vm.intersectionRight = true }, label = { Text("Derecha ▶", maxLines = 1) })
             }
         }
     }
@@ -465,8 +519,8 @@ private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(vm.newName, { vm.newName = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.weight(1f))
-        OutlinedTextField(vm.newCode, { vm.newCode = it }, label = { Text("Código") }, singleLine = true, modifier = Modifier.weight(1f))
+        OutlinedTextField(vm.newName, { vm.newName = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1f))
+        OutlinedTextField(vm.newCode, { vm.newCode = it }, label = { Text("Código", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1f))
     }
     Button(onClick = { vm.create(sel) }, enabled = prev.isSuccess, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Text("Crear punto")
@@ -488,10 +542,8 @@ private fun ResectionPanel(sel: List<PointEntity>, vm: CogoViewModel) {
         style = MaterialTheme.typography.bodySmall,
     )
     SectionTitle("Ángulos horizontales medidos desde la estación")
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        NumberField(vm.angleP1P2, { vm.angleP1P2 = it }, "Ángulo P1–P–P2", Modifier.weight(1f), "°")
-        NumberField(vm.angleP2P3, { vm.angleP2P3 = it }, "Ángulo P2–P–P3", Modifier.weight(1f), "°")
-    }
+    NumberField(vm.angleP1P2, { vm.angleP1P2 = it }, "Ángulo P1–P–P2", Modifier.fillMaxWidth(), "°")
+    NumberField(vm.angleP2P3, { vm.angleP2P3 = it }, "Ángulo P2–P–P3", Modifier.fillMaxWidth(), "°")
 
     val prevResection = vm.resectionResult(sel)
     Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -503,7 +555,7 @@ private fun ResectionPanel(sel: List<PointEntity>, vm: CogoViewModel) {
         }
     }
     OutlinedTextField(
-        vm.resectionName, { vm.resectionName = it }, label = { Text("Nombre") },
+        vm.resectionName, { vm.resectionName = it }, label = { Text("Nombre", maxLines = 1) },
         singleLine = true, modifier = Modifier.fillMaxWidth(),
     )
     Button(
@@ -573,11 +625,11 @@ private fun CurvePanel(sel: List<PointEntity>, vm: CogoViewModel) {
     SectionTitle("Datos de la curva")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         NumberField(vm.curveRadius, { vm.curveRadius = it }, "Radio", Modifier.weight(1f), "m")
-        NumberField(vm.curveDelta, { vm.curveDelta = it }, "Ángulo central (Δ)", Modifier.weight(1f), "°")
+        NumberField(vm.curveDelta, { vm.curveDelta = it }, "Delta (Δ)", Modifier.weight(1f), "°")
     }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        FilterChip(selected = !vm.curveTurnRight, onClick = { vm.curveTurnRight = false }, label = { Text("◀ Gira izquierda") })
-        FilterChip(selected = vm.curveTurnRight, onClick = { vm.curveTurnRight = true }, label = { Text("Gira derecha ▶") })
+        FilterChip(selected = !vm.curveTurnRight, onClick = { vm.curveTurnRight = false }, label = { Text("◀ Gira izquierda", maxLines = 1) })
+        FilterChip(selected = vm.curveTurnRight, onClick = { vm.curveTurnRight = true }, label = { Text("Gira derecha ▶", maxLines = 1) })
     }
 
     val curveRes = vm.curveResult(sel)
@@ -599,7 +651,7 @@ private fun CurvePanel(sel: List<PointEntity>, vm: CogoViewModel) {
     SectionTitle("Estacado")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         NumberField(vm.curveInterval, { vm.curveInterval = it }, "Intervalo", Modifier.weight(1f), "m")
-        NumberField(vm.curveStartStation, { vm.curveStartStation = it }, "Estación en PC", Modifier.weight(1f), "m")
+        NumberField(vm.curveStartStation, { vm.curveStartStation = it }, "Estación PC", Modifier.weight(1f), "m")
     }
     val stakes = vm.curveStakeList(sel)
     stakes.onSuccess { list ->
@@ -650,17 +702,23 @@ private fun TraversePanel(sel: List<PointEntity>, vm: CogoViewModel) {
 
     SectionTitle("Tramos observados (azimut + distancia)")
     vm.legAzimuth.indices.forEach { i ->
-        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                vm.legName[i], { vm.legName[i] = it }, label = { Text("Nombre") },
-                singleLine = true, modifier = Modifier.weight(0.8f),
-            )
-            Spacer(Modifier.width(4.dp))
-            NumberField(vm.legAzimuth[i], { vm.legAzimuth[i] = it }, "Azimut", Modifier.weight(1f), "°")
-            Spacer(Modifier.width(4.dp))
-            NumberField(vm.legDistance[i], { vm.legDistance[i] = it }, "Distancia", Modifier.weight(1f), "m")
-            IconButton(onClick = { vm.removeLeg(i) }, enabled = vm.legAzimuth.size > 1) {
-                Icon(Icons.Filled.Close, contentDescription = "Quitar tramo")
+        // Un tramo por tarjeta: nombre arriba, azimut y distancia abajo (en una sola fila no entraban las etiquetas)
+        Card(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+            Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Tramo ${i + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
+                    OutlinedTextField(
+                        vm.legName[i], { vm.legName[i] = it }, label = { Text("Nombre", maxLines = 1) },
+                        singleLine = true, modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { vm.removeLeg(i) }, enabled = vm.legAzimuth.size > 1) {
+                        Icon(Icons.Filled.Close, contentDescription = "Quitar tramo")
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(vm.legAzimuth[i], { vm.legAzimuth[i] = it }, "Azimut", Modifier.weight(1f), "°")
+                    NumberField(vm.legDistance[i], { vm.legDistance[i] = it }, "Distancia", Modifier.weight(1f), "m")
+                }
             }
         }
     }

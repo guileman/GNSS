@@ -118,6 +118,14 @@ class AppPrefs(context: Context) {
         _mapLayer.value = layer
     }
 
+    /** Proveedor del mapa base: "GOOGLE" (si hay clave de API) u "OSM" (OpenStreetMap/Esri, funciona sin Internet). */
+    private val _mapProvider = MutableStateFlow(sp.getString("mapProvider", "GOOGLE") ?: "GOOGLE")
+    val mapProvider: StateFlow<String> = _mapProvider
+    fun setMapProvider(p: String) {
+        sp.edit().putString("mapProvider", p).apply()
+        _mapProvider.value = p
+    }
+
     var lastHost: String
         get() = sp.getString("host", "192.168.42.1") ?: "192.168.42.1"
         set(v) = sp.edit().putString("host", v).apply()
