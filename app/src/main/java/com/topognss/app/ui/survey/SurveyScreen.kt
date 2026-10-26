@@ -103,11 +103,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.sqrt
 
-data class MeasureProgress(val accepted: Int, val target: Int, val rejected: Int, val lastReason: String?)
+data class MeasureProgress(val accepted: Int, val target: Int, val rejected: Int, val lastReason: String?, val byTime: Boolean = false)
 
 class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = topo.prefs
@@ -119,6 +120,8 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     val all = hold(activePointsFlow(), emptyList<PointEntity>())
 
     var epochs by mutableStateOf(prefs.surveyEpochs)
+    var byTime by mutableStateOf(prefs.surveyByTime)
+    var seconds by mutableStateOf(prefs.surveySeconds)
     var maxHrms by mutableStateOf(prefs.surveyMaxHrms.toString())
     var maxVrms by mutableStateOf(prefs.surveyMaxVrms.toString())
     var requireFix by mutableStateOf(prefs.surveyRequireFix)
@@ -140,6 +143,8 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveSettings() {
         prefs.surveyEpochs = epochs
+        prefs.surveyByTime = byTime
+        prefs.surveySeconds = seconds
         parseNum(maxHrms)?.let { prefs.surveyMaxHrms = it.toFloat() }
         parseNum(maxVrms)?.let { prefs.surveyMaxVrms = it.toFloat() }
         prefs.surveyRequireFix = requireFix
@@ -167,6 +172,9 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
         if (pointName.isEmpty()) { message = "Ingresá un nombre"; return }
         saveSettings()
         val n = epochs.coerceAtLeast(1)
+        val byTime = byTime
+        val secs = seconds.coerceAtLeast(1)
+        val target = if (byTime) secs else n
         val hMax = parseNum(maxHrms)
         val vMax = parseNum(maxVrms)
         val antH = parseNum(antennaHeight) ?: 0.0
@@ -176,22 +184,32 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
             if (repo.nameExists(p.id, pointName)) { message = "Ya existe un punto '$pointName'"; return@launch }
             var rejected = 0
             var accepted = 0
-            progress = MeasureProgress(0, n, 0, null)
-            val timeoutMs = 20_000L + n * 4_000L
+            var startAt = 0L
+            progress = MeasureProgress(0, target, 0, null, byTime)
+            // Por segundos, el reloj arranca con la primera época válida; el tope incluye la espera del FIX.
+            val timeoutMs = if (byTime) 20_000L + secs * 2_000L else 20_000L + n * 4_000L
             val list: List<Epoch>? = withTimeoutOrNull(timeoutMs) {
                 topo.gnss.epochs
                     .onEach { e ->
                         val r = rejectReason(e, hMax, vMax)
-                        if (r != null) rejected++ else accepted++
-                        progress = MeasureProgress(accepted.coerceAtMost(n), n, rejected, r ?: progress?.lastReason)
+                        if (r != null) rejected++ else {
+                            accepted++
+                            if (startAt == 0L) startAt = System.currentTimeMillis()
+                        }
+                        val shown = if (byTime) ((System.currentTimeMillis() - startAt) / 1000).toInt().takeIf { startAt > 0L } ?: 0 else accepted
+                        progress = MeasureProgress(shown.coerceAtMost(target), target, rejected, r ?: progress?.lastReason, byTime)
                     }
                     .filter { rejectReason(it, hMax, vMax) == null }
-                    .take(n)
+                    .let { f ->
+                        if (byTime) f.transformWhile { e -> emit(e); System.currentTimeMillis() - startAt < secs * 1000L }
+                        else f.take(n)
+                    }
                     .toList()
             }
             progress = null
-            if (list == null || list.size < n) {
-                message = "Tiempo agotado: $accepted de $n épocas válidas ($rejected rechazadas)."
+            if (list == null || list.isEmpty() || (!byTime && list.size < n)) {
+                message = if (byTime) "Tiempo agotado: $accepted épocas válidas ($rejected rechazadas)."
+                else "Tiempo agotado: $accepted de $n épocas válidas ($rejected rechazadas)."
                 return@launch
             }
             val pt = average(list, antH, p, pointName)
@@ -375,7 +393,8 @@ fun SurveyScreen(
                     if (ready) StatusChip(s.solution.label, container = solutionColor(s.solution))
                     else StatusChip("Sin posición", container = Color(0xFF546E7A))
                     StatusChip("H ${s.hrms.f(3)}  V ${s.vrms.f(3)}")
-                    StatusChip("Ht ${parseNum(vm.antennaHeight).f(3)}")
+                    StatusChip("Pole ${parseNum(vm.antennaHeight).f(3)}")
+                    StatusChip(if (vm.byTime) "${vm.seconds} s" else "${vm.epochs} ép.")
                 }
             }
         }
@@ -468,7 +487,7 @@ fun SurveyScreen(
                     } else {
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("Midiendo ${prog.accepted}/${prog.target} épocas · rechazadas ${prog.rejected}", fontWeight = FontWeight.Bold)
+                                Text(if (prog.byTime) "Midiendo ${prog.accepted}/${prog.target} s · rechazadas ${prog.rejected}" else "Midiendo ${prog.accepted}/${prog.target} épocas · rechazadas ${prog.rejected}", fontWeight = FontWeight.Bold)
                                 LinearProgressIndicator(progress = { prog.accepted / prog.target.toFloat() }, modifier = Modifier.fillMaxWidth())
                                 prog.lastReason?.let { Text("Último rechazo: $it", style = MaterialTheme.typography.bodySmall) }
                                 OutlinedButton(onClick = { vm.cancel() }) { Text("Cancelar") }
@@ -481,12 +500,6 @@ fun SurveyScreen(
                         OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1f))
                         OutlinedTextField(vm.code, { vm.code = it }, label = { Text("Descripción", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1.4f))
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Épocas", Modifier.padding(end = 4.dp))
-                        listOf(1, 5, 10, 30).forEach { n ->
-                            FilterChip(selected = vm.epochs == n, onClick = { vm.epochs = n }, label = { Text("$n", maxLines = 1) })
-                        }
-                    }
                 }
             }
         }
@@ -498,17 +511,33 @@ fun SurveyScreen(
             title = { Text("Ajustes de medición") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(vm.antennaHeight, { vm.antennaHeight = it }, "Altura del pole", Modifier.fillMaxWidth(), "m")
+                    Text(
+                        "Se resta a la cota recibida. Ponela en 0 si ya la configuraste en el receptor.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    SectionTitle("Tiempo de medición")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = !vm.byTime, onClick = { vm.byTime = false }, label = { Text("Épocas", maxLines = 1) })
+                        FilterChip(selected = vm.byTime, onClick = { vm.byTime = true }, label = { Text("Segundos", maxLines = 1) })
+                    }
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (vm.byTime) listOf(5, 10, 15, 30, 60).forEach { n ->
+                            FilterChip(selected = vm.seconds == n, onClick = { vm.seconds = n }, label = { Text("$n s", maxLines = 1) })
+                        } else listOf(1, 5, 10, 30, 60).forEach { n ->
+                            FilterChip(selected = vm.epochs == n, onClick = { vm.epochs = n }, label = { Text("$n", maxLines = 1) })
+                        }
+                    }
+                    SectionTitle("Filtros de calidad")
                     NumberField(vm.maxHrms, { vm.maxHrms = it }, "HRMS máx", Modifier.fillMaxWidth(), "m")
                     NumberField(vm.maxVrms, { vm.maxVrms = it }, "VRMS máx", Modifier.fillMaxWidth(), "m")
-                    NumberField(vm.antennaHeight, { vm.antennaHeight = it }, "Altura de antena", Modifier.fillMaxWidth(), "m")
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(checked = vm.requireFix, onCheckedChange = { vm.requireFix = it })
                         Text("  Exigir solución FIX", Modifier.weight(1f))
                     }
-                    Text(
-                        "La altura de antena se resta a la cota recibida. Ponela en 0 si ya la configuraste en el receptor.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
                 }
             },
             confirmButton = { TextButton(onClick = { vm.saveSettings(); showSettings = false }) { Text("Guardar") } },
@@ -519,19 +548,12 @@ fun SurveyScreen(
 
 @Composable
 private fun MapRoundButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    // Botón redondo con su nombre debajo: los íconos solos no se entendían (p. ej. no se encontraba Replanteo)
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        FloatingActionButton(
-            onClick = onClick,
-            shape = CircleShape,
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ) { Icon(icon, contentDescription = label) }
-        Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)) {
-            Text(
-                label, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-            )
-        }
-    }
+    // Solo ícono (sin etiqueta); el nombre queda como descripción de accesibilidad
+    FloatingActionButton(
+        onClick = onClick,
+        modifier = modifier,
+        shape = CircleShape,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) { Icon(icon, contentDescription = label) }
 }

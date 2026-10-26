@@ -142,6 +142,13 @@ class AppPrefs(context: Context) {
     var surveyEpochs: Int
         get() = sp.getInt("epochs", 5)
         set(v) = sp.edit().putInt("epochs", v).apply()
+    /** true = medir durante [surveySeconds] segundos; false = tomar [surveyEpochs] épocas. */
+    var surveyByTime: Boolean
+        get() = sp.getBoolean("survey_by_time", false)
+        set(v) = sp.edit().putBoolean("survey_by_time", v).apply()
+    var surveySeconds: Int
+        get() = sp.getInt("survey_seconds", 10)
+        set(v) = sp.edit().putInt("survey_seconds", v).apply()
     var surveyMaxHrms: Float
         get() = sp.getFloat("maxHrms", 0.02f)
         set(v) = sp.edit().putFloat("maxHrms", v).apply()
