@@ -392,7 +392,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
                 val tm = proj.crs().projection
                 fun ll(p: P3): Pair<Double, Double> = tm.inverse(p.e, p.n).let { it.lat to it.lon }
                 val sketch = sketchFor(tab, sel, vm)
-                Box(Modifier.fillMaxWidth().height(maxHeight * 0.52f)) {
+                Box(Modifier.fillMaxWidth().height(this@BoxWithConstraints.maxHeight * 0.52f)) {
                     TopoMap(
                         modifier = Modifier.fillMaxSize(),
                         points = all.map { p -> p.toMapPoint(order = vm.selected.indexOf(p.id).takeIf { it >= 0 }?.plus(1)) },
