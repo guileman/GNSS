@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 520" font-family="sans-serif">
+  <style>
+    .known { fill: #0E7C86; }
+    .new { fill: #D7263D; }
+    .ghost { fill: none; stroke: #D7263D; stroke-width: 1.5; stroke-dasharray: 3 3; }
+    .base { stroke: #0E7C86; stroke-width: 1.6; }
+    .par { stroke: #555; stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+    .lbl { font-size: 13px; fill: #222; }
+    .leg { font-size: 11.5px; fill: #555; }
+    .ttl { font-size: 13.5px; font-weight: bold; fill: #222; }
+    .box { fill: #fafafa; stroke: #d5d5d5; }
+  </style>
+  <rect width="660" height="520" fill="#ffffff"/>
+  <text x="20" y="26" font-size="16" font-weight="bold">Crear puntos: las cinco herramientas</text>
+
+  <!-- 1. Punto medio -->
+  <g transform="translate(20,44)">
+    <rect class="box" width="200" height="216" rx="8"/>
+    <text x="12" y="22" class="ttl">1 · Punto medio</text>
+    <line x1="35" y1="165" x2="165" y2="85" class="base"/>
+    <circle cx="35" cy="165" r="5" class="known"/><text x="20" y="186" class="lbl">A</text>
+    <circle cx="165" cy="85" r="5" class="known"/><text x="170" y="80" class="lbl">B</text>
+    <circle cx="100" cy="125" r="6" class="new"/><text x="108" y="148" class="lbl">M</text>
+    <text x="12" y="204" class="leg">Mitad exacta entre A y B</text>
+  </g>
+
+  <!-- 2. Prolongación -->
+  <g transform="translate(230,44)">
+    <rect class="box" width="200" height="216" rx="8"/>
+    <text x="12" y="22" class="ttl">2 · Prolongación</text>
+    <line x1="25" y1="165" x2="110" y2="115" class="base"/>
+    <line x1="110" y1="115" x2="175" y2="77" class="par"/>
+    <circle cx="25" cy="165" r="5" class="known"/><text x="14" y="186" class="lbl">A</text>
+    <circle cx="110" cy="115" r="5" class="known"/><text x="100" y="138" class="lbl">B</text>
+    <circle cx="175" cy="77" r="6" class="new"/><text x="150" y="68" class="lbl">P</text>
+    <text x="118" y="106" class="leg" transform="rotate(-30 118 106)">d desde B</text>
+    <text x="12" y="204" class="leg">Sigue la línea A→B (d &lt; 0: hacia A)</text>
+  </g>
+
+  <!-- 3. Estación / desplazamiento -->
+  <g transform="translate(440,44)">
+    <rect class="box" width="200" height="216" rx="8"/>
+    <text x="12" y="22" class="ttl">3 · Estación / desplaz.</text>
+    <line x1="70" y1="185" x2="70" y2="45" class="base"/>
+    <line x1="70" y1="185" x2="70" y2="118" class="par"/>
+    <line x1="70" y1="118" x2="150" y2="118" class="par"/>
+    <circle cx="70" cy="185" r="5" class="known"/><text x="52" y="198" class="lbl">A</text>
+    <circle cx="70" cy="45" r="5" class="known"/><text x="52" y="42" class="lbl">B</text>
+    <circle cx="70" cy="118" r="3" fill="#555"/>
+    <circle cx="150" cy="118" r="6" class="new"/><text x="158" y="114" class="lbl">P</text>
+    <text x="14" y="156" class="leg" transform="rotate(-90 36 160)">estación</text>
+    <text x="84" y="134" class="leg">desplaz. (derecha)</text>
+    <text x="108" y="70" class="leg">mirando de A a B</text>
+  </g>
+
+  <!-- 4. Intersección por azimutes -->
+  <g transform="translate(20,272)">
+    <rect class="box" width="200" height="216" rx="8"/>
+    <text x="12" y="22" class="ttl">4 · Intersec. (azimutes)</text>
+    <line x1="35" y1="158" x2="165" y2="158" class="base"/>
+    <line x1="35" y1="158" x2="100" y2="83" class="par"/>
+    <line x1="165" y1="158" x2="100" y2="83" class="par"/>
+    <circle cx="35" cy="158" r="5" class="known"/><text x="24" y="176" class="lbl">A</text>
+    <circle cx="165" cy="158" r="5" class="known"/><text x="168" y="176" class="lbl">B</text>
+    <circle cx="100" cy="83" r="6" class="new"/><text x="108" y="80" class="lbl">P</text>
+    <text x="38" y="118" class="leg">Az A</text>
+    <text x="138" y="118" class="leg">Az B</text>
+    <text x="12" y="204" class="leg">Dos visuales que se cruzan en P</text>
+  </g>
+
+  <!-- 5. Intersección por distancias -->
+  <g transform="translate(230,272)">
+    <rect class="box" width="200" height="216" rx="8"/>
+    <text x="12" y="22" class="ttl">5 · Intersec. (distancias)</text>
+    <line x1="35" y1="120" x2="165" y2="120" class="base"/>
+    <line x1="35" y1="120" x2="100" y2="178" class="par"/>
+    <line x1="165" y1="120" x2="100" y2="178" class="par"/>
+    <line x1="35" y1="120" x2="100" y2="62" stroke="#bbb" stroke-width="1.2" stroke-dasharray="3 3"/>
+    <line x1="165" y1="120" x2="100" y2="62" stroke="#bbb" stroke-width="1.2" stroke-dasharray="3 3"/>
+    <circle cx="35" cy="120" r="5" class="known"/><text x="24" y="140" class="lbl">A</text>
+    <circle cx="165" cy="120" r="5" class="known"/><text x="168" y="140" class="lbl">B</text>
+    <circle cx="100" cy="178" r="6" class="new"/><text x="108" y="184" class="lbl">P</text>
+    <circle cx="100" cy="62" r="6" class="ghost"/><text x="108" y="58" class="leg">otra solución</text>
+    <text x="40" y="160" class="leg">d1</text><text x="140" y="160" class="leg">d2</text>
+    <text x="12" y="204" class="leg">Elegís derecha o izquierda</text>
+  </g>
+
+  <!-- Convenciones -->
+  <g transform="translate(440,272)">
+    <rect class="box" width="200" height="216" rx="8"/>
+    <text x="12" y="22" class="ttl">Cómo leer los dibujos</text>
+    <circle cx="26" cy="52" r="5" class="known"/><text x="40" y="56" class="leg">Puntos que ya tenés (A, B)</text>
+    <circle cx="26" cy="80" r="6" class="new"/><text x="40" y="84" class="leg">Punto nuevo que se crea</text>
+    <line x1="18" y1="108" x2="36" y2="108" class="par"/><text x="40" y="112" class="leg">Parámetros (línea punteada)</text>
+    <line x1="18" y1="136" x2="36" y2="136" class="base"/><text x="40" y="140" class="leg">Línea base A→B</text>
+    <text x="12" y="170" class="leg">En la app, los mismos dibujos</text>
+    <text x="12" y="186" class="leg">aparecen sobre el mapa antes</text>
+    <text x="12" y="202" class="leg">de tocar «Crear punto».</text>
+  </g>
+</svg>
