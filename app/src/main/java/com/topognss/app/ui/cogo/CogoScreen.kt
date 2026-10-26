@@ -33,6 +33,25 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.AddLocationAlt
+import androidx.compose.material.icons.filled.Adjust
+import androidx.compose.material.icons.filled.ArrowRightAlt
+import androidx.compose.material.icons.filled.CallMerge
+import androidx.compose.material.icons.filled.ChangeHistory
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Gesture
+import androidx.compose.material.icons.filled.LinearScale
+import androidx.compose.material.icons.filled.Straighten
+import androidx.compose.material.icons.filled.SubdirectoryArrowRight
+import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.Surface
@@ -349,6 +368,41 @@ private fun sketchFor(tab: Int, sel: List<PointEntity>, vm: CogoViewModel): Cogo
     }
 }.getOrDefault(CogoSketch())
 
+private data class CogoTool(val label: String, val icon: ImageVector)
+
+private val COGO_TOOLS = listOf(
+    CogoTool("Medición", Icons.Filled.Straighten),
+    CogoTool("Crear puntos", Icons.Filled.AddLocationAlt),
+    CogoTool("Resección", Icons.Filled.ChangeHistory),
+    CogoTool("Curva", Icons.Filled.Gesture),
+    CogoTool("Poligonal", Icons.Filled.Timeline),
+)
+
+@Suppress("DEPRECATION")
+private fun CreateMethod.icon(): ImageVector = when (this) {
+    CreateMethod.MIDPOINT -> Icons.Filled.LinearScale
+    CreateMethod.EXTEND -> Icons.Filled.ArrowRightAlt
+    CreateMethod.OFFSET -> Icons.Filled.SubdirectoryArrowRight
+    CreateMethod.INTERSECTION_AZ -> Icons.Filled.CallMerge
+    CreateMethod.INTERSECTION_DIST -> Icons.Filled.Adjust
+}
+
+/** Botón redondo de 44 dp que flota sobre el mapa; resaltado cuando es la herramienta activa. */
+@Composable
+private fun FloatingIcon(icon: ImageVector, description: String, selected: Boolean, onClick: () -> Unit) {
+    val bg = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    Box(
+        Modifier.size(44.dp).clip(CircleShape).background(bg).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, contentDescription = description, tint = fg) }
+}
+
+/**
+ * Cálculo: el mapa ocupa casi toda la pantalla. Las herramientas son iconos que flotan a la izquierda
+ * (Crear puntos abre un submenú con sus cinco métodos) y los datos van en un panel inferior compacto
+ * que se despliega con la flecha.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel = viewModel()) {
@@ -356,43 +410,23 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
     val all by vm.points.collectAsState()
     var tab by rememberSaveable { mutableStateOf(0) }
     var selectOnMap by rememberSaveable { mutableStateOf(true) }
+    var submenu by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(project?.id) { vm.refreshName() }
 
     val proj = project
     if (proj == null) { NoProjectCard(onOpenProjects); return }
     val sel = vm.selectedPoints(all)
-
-    // Cinco herramientas: pestañas desplazables y de una sola línea (antes se partían en medio de la palabra)
-    val tabs: @Composable () -> Unit = {
-        ScrollableTabRow(
-            selectedTabIndex = tab, edgePadding = 4.dp,
-            containerColor = Color.Transparent, divider = {},
-        ) {
-            listOf("Medición", "Crear puntos", "Resección", "Curva", "Poligonal").forEachIndexed { i, label ->
-                Tab(selected = tab == i, onClick = { tab = i }, text = { Text(label, maxLines = 1, softWrap = false) })
-            }
-        }
-    }
-    val selection: @Composable () -> Unit = {
-        Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (sel.isEmpty()) "Tocá los puntos en orden" else sel.joinToString(" → ") { it.name },
-                Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 2,
-            )
-            TextButton(onClick = { selectOnMap = !selectOnMap }) { Text(if (selectOnMap) "Lista" else "Mapa") }
-            TextButton(onClick = { vm.clear() }) { Text("Limpiar") }
-        }
-    }
     val glass = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
 
-    // El mapa ocupa la mitad de la pantalla y el encabezado flota encima (como los botones de Levantamiento)
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            if (selectOnMap) {
-                val tm = proj.crs().projection
-                fun ll(p: P3): Pair<Double, Double> = tm.inverse(p.e, p.n).let { it.lat to it.lon }
-                val sketch = sketchFor(tab, sel, vm)
-                Box(Modifier.fillMaxWidth().height(this@BoxWithConstraints.maxHeight * 0.52f)) {
+        val sheetHeight = this@BoxWithConstraints.maxHeight * (if (expanded) 0.62f else 0.32f)
+        Column(Modifier.fillMaxSize().imePadding()) {
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                if (selectOnMap) {
+                    val tm = proj.crs().projection
+                    fun ll(p: P3): Pair<Double, Double> = tm.inverse(p.e, p.n).let { it.lat to it.lon }
+                    val sketch = sketchFor(tab, sel, vm)
                     TopoMap(
                         modifier = Modifier.fillMaxSize(),
                         points = all.map { p -> p.toMapPoint(order = vm.selected.indexOf(p.id).takeIf { it >= 0 }?.plus(1)) },
@@ -402,41 +436,131 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
                         onPointTap = { id -> vm.toggle(id) },
                         dashed = sketch.dashed.map { seg -> seg.map(::ll) },
                         previews = sketch.points.map { (n, p) -> ll(p).let { (la, lo) -> MapPoint(-1, n, la, lo, PREVIEW_COLOR) } },
-                        controlsTopPadding = 56.dp,
                     )
-                    Row(
-                        Modifier.align(Alignment.TopStart).fillMaxWidth().padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Surface(shape = CircleShape, color = glass, shadowElevation = 4.dp) {
-                            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }
-                        }
-                        Surface(Modifier.weight(1f), shape = RoundedCornerShape(24.dp), color = glass, shadowElevation = 4.dp) { tabs() }
-                    }
-                    Surface(
-                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp),
-                        shape = RoundedCornerShape(16.dp), color = glass, shadowElevation = 4.dp,
-                    ) { selection() }
+                } else {
+                    OrderedPointSelector(
+                        all, vm.selected, vm::toggle,
+                        Modifier.fillMaxSize().padding(start = 68.dp, top = 8.dp, bottom = 60.dp),
+                    )
                 }
-            } else {
-                ScreenHeader(title = "Cálculo", onBack = onBack)
-                tabs()
-                selection()
-                OrderedPointSelector(all, vm.selected, vm::toggle, Modifier.fillMaxWidth().heightIn(max = 260.dp))
+
+                // Volver
+                Surface(Modifier.align(Alignment.TopStart).padding(8.dp), shape = CircleShape, color = glass, shadowElevation = 4.dp) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }
+                }
+                // Herramientas
+                Surface(
+                    Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 64.dp),
+                    shape = RoundedCornerShape(28.dp), color = glass, shadowElevation = 4.dp,
+                ) {
+                    Column(Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        COGO_TOOLS.forEachIndexed { i, t ->
+                            FloatingIcon(t.icon, t.label, tab == i) {
+                                if (i == 1 && tab == 1) submenu = !submenu else { tab = i; submenu = i == 1 }
+                            }
+                        }
+                    }
+                }
+                // Submenú de Crear puntos (junto a su icono, que es el segundo)
+                if (tab == 1 && submenu) {
+                    Surface(
+                        Modifier.align(Alignment.TopStart).padding(start = 68.dp, top = 112.dp),
+                        shape = RoundedCornerShape(28.dp), color = glass, shadowElevation = 4.dp,
+                    ) {
+                        Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            CreateMethod.entries.forEach { m ->
+                                FloatingIcon(m.icon(), m.label, vm.method == m) { vm.method = m; submenu = false }
+                            }
+                        }
+                    }
+                }
+                // Selección en orden + Lista/Mapa + Limpiar
+                Surface(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp),
+                    shape = RoundedCornerShape(16.dp), color = glass, shadowElevation = 4.dp,
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (sel.isEmpty()) "Tocá los puntos en orden" else sel.joinToString(" → ") { it.name },
+                            Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 2,
+                        )
+                        TextButton(onClick = { selectOnMap = !selectOnMap }) { Text(if (selectOnMap) "Lista" else "Mapa") }
+                        TextButton(onClick = { vm.clear() }) { Text("Limpiar") }
+                    }
+                }
             }
 
-        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(12.dp)) {
-            if (tab == 0) {
-                MeasurementResults(sel, all, vm, proj.crs().projection.let { tm ->
-                    sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
-                })
-            } else if (tab == 1) CreatePanel(sel, vm)
-            else if (tab == 2) ResectionPanel(sel, vm)
-            else if (tab == 3) CurvePanel(sel, vm)
-            else TraversePanel(sel, vm)
+            // Panel de datos compacto
+            Surface(
+                Modifier.fillMaxWidth().height(sheetHeight),
+                shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+                shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when (tab) {
+                                0 -> if (sel.size >= 2) "${sel.first().name} → ${sel.last().name}" else "Medición"
+                                1 -> "Crear punto · ${vm.method.label}"
+                                2 -> "Resección"
+                                3 -> "Curva horizontal"
+                                else -> "Poligonal"
+                            },
+                            Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        IconButton(onClick = { expanded = !expanded }) {
+                            Icon(
+                                if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess,
+                                contentDescription = if (expanded) "Contraer panel" else "Ampliar panel",
+                            )
+                        }
+                    }
+                    Column(
+                        Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp).padding(bottom = 12.dp),
+                    ) {
+                        when (tab) {
+                            0 -> if (expanded) {
+                                MeasurementResults(sel, all, vm, proj.crs().projection.let { tm ->
+                                    sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
+                                })
+                            } else MeasurementCompact(sel) { expanded = true }
+                            1 -> CreatePanel(sel, vm)
+                            2 -> ResectionPanel(sel, vm)
+                            3 -> CurvePanel(sel, vm)
+                            else -> TraversePanel(sel, vm)
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+/** Resumen de la medición en 4 datos (primer tramo); «Más datos» despliega el panel completo. */
+@Composable
+private fun MeasurementCompact(sel: List<PointEntity>, onMore: () -> Unit) {
+    if (sel.size < 2) { Text("Tocá 2 o más puntos en el mapa para medir."); return }
+    val legs = Cogo.traverse(sel.map { it.toP3() })
+    val s = legs.first()
+    if (sel.size > 2) {
+        Text(
+            "Tramo ${sel[0].name} → ${sel[1].name} · ${legs.size} tramos, acumulado ${legs.sumOf { it.horizontal }.f(3)} m",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(1f)) {
+            KeyValue("Dist. horiz.", s.horizontal.f(3) + " m")
+            KeyValue("Desnivel", s.deltaZ.f(3) + " m")
         }
+        Column(Modifier.weight(1f)) {
+            KeyValue("Azimut", formatDms(s.azimuthDeg))
+            KeyValue("Pendiente", s.gradePercent.f(2) + " %")
+        }
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        TextButton(onClick = onMore) { Text("Más datos (dist. inclinada, ángulos, superficie)") }
     }
 }
 
@@ -502,11 +626,6 @@ private fun MeasurementResults(sel: List<PointEntity>, all: List<PointEntity>, v
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        CreateMethod.entries.forEach { m ->
-            FilterChip(selected = vm.method == m, onClick = { vm.method = m }, label = { Text(m.label) })
-        }
-    }
     val a = sel.getOrNull(0)?.name ?: "A"
     val b = sel.getOrNull(1)?.name ?: "B"
     when (vm.method) {
