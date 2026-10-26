@@ -88,9 +88,65 @@ coordenadas elegido.
 
 ### Crear puntos
 
-A partir de puntos existentes: punto medio entre dos, prolongación sobre una alineación (con o
-sin extrapolar la cota) y estación con desplazamiento perpendicular (derecha/izquierda) respecto
-de una alineación de dos puntos.
+![Crear puntos: las cinco herramientas](img/crear-puntos.svg)
+
+Calcula puntos nuevos a partir de **dos puntos que ya existen en el proyecto** (A y B). Pestaña
+**Crear puntos** dentro de Cálculo.
+
+**Cómo se usa**
+
+1. Elegí la herramienta en la fila de botones de arriba del panel.
+2. Tocá en el mapa (o en la lista) los puntos base **en orden: primero A, después B**. El orden
+   importa: define el sentido de la línea A→B, y con él qué es «derecha» e «izquierda».
+3. Completá los datos de la herramienta. El resultado (E, N y cota) se actualiza solo, y en el mapa
+   aparece el punto nuevo con un anillo punteado y los parámetros como **líneas punteadas**.
+4. Ponele nombre y código (el nombre se sugiere solo: C001, C002…) y tocá **Crear punto**. Se guarda
+   como punto de tipo **COGO**, listo para replantear.
+
+**1 · Punto medio.** No pide datos: el punto queda justo en la mitad entre A y B (Este, Norte y
+cota promediados).
+
+**2 · Prolongación.** Un punto sobre la línea A→B, a una distancia medida **desde B**. Con distancia
+positiva sigue más allá de B; con distancia negativa vuelve hacia A. Opción *Extrapolar pendiente
+para la cota*: si está activa, la cota sigue la pendiente de A a B; si no, el punto nuevo toma la
+cota de B. Sirve, por ejemplo, para alargar una medianera o un eje.
+
+**3 · Estación / desplazamiento.** Ubica un punto por «cuánto avanzo y cuánto me corro»:
+
+- **Estación**: distancia medida **desde A**, a lo largo de la línea A→B.
+- **Desplazamiento**: distancia perpendicular a esa línea, a la **derecha** o a la **izquierda**
+  mirando de A hacia B (se elige con los botones *◀ Izquierda* / *Derecha ▶*). Si lo dejás vacío es
+  0 y el punto queda sobre la línea.
+- La cota se interpola entre A y B según la estación.
+- En el mapa se dibujan **dos líneas punteadas en L**: de A al pie de la perpendicular (la
+  estación) y de ahí al punto (el desplazamiento).
+- La estación puede ser mayor que el largo A-B o negativa; el punto queda en la prolongación de la
+  línea.
+
+*Ejemplo.* A = (E 100, N 100) y B = (E 100, N 200), la línea va hacia el norte. Estación 30 y
+desplazamiento 5 a la derecha dan **E 105, N 130**: 30 m hacia el norte y 5 m hacia el este. Con
+desplazamiento a la izquierda sería E 95. Es la forma típica de replantear una línea de edificación
+o un retiro desde la línea municipal: A y B son dos mojones de la medianera, la estación es la
+distancia desde el primero y el desplazamiento es el retiro.
+
+**4 · Intersección (azimutes).** Para un punto al que no se puede llegar o medir directo: se
+observa su dirección desde A y desde B, y la app calcula dónde se cruzan las dos visuales. Se
+ingresa el **azimut** desde A y el azimut desde B, en grados decimales (contado desde el norte en
+sentido horario). Si las visuales son paralelas avisa que no se cruzan. La cota es el promedio de A
+y B.
+
+*Ejemplo.* A = (0, 0), B = (100, 0), azimut desde A 45° y desde B 315° dan **E 50, N 50**.
+
+**5 · Intersección (distancias).** El punto está a una distancia conocida de A y otra de B
+(medidas con cinta o con distanciómetro). Hay **dos soluciones**, una a cada lado de la línea A-B;
+con los botones *Izquierda / Derecha* (mirando de A a B) se elige cuál. Si las dos distancias no
+alcanzan a «cerrar» sobre la base A-B (son muy cortas o muy largas), avisa que son incompatibles.
+
+*Ejemplo.* A = (0, 0), B = (100, 0) y 70,711 m desde cada uno: a la derecha queda en **E 50, N −50**
+y a la izquierda en **E 50, N 50**.
+
+> Consejo: antes de crear un punto, mirá el mapa. Si las líneas punteadas van para un lado que no
+> esperabas, casi siempre el motivo es que A y B están invertidos o que elegiste el lado equivocado.
 
 ### Poligonal
 
@@ -108,7 +164,7 @@ pueden guardar como puntos COGO del proyecto.
 
 ![Intersección y resección](img/interseccion-resection.svg)
 
-- **Intersección por azimutes**: dos puntos conocidos y el azimut observado desde cada uno hacia
+- **Intersección por azimutes** (también en [Crear puntos](#crear-puntos)): dos puntos conocidos y el azimut observado desde cada uno hacia
   el punto buscado; la app calcula dónde se cruzan esas dos visuales.
 - **Intersección por distancias**: dos puntos conocidos y la distancia medida desde cada uno al
   punto buscado (con una cinta o una visual estadimétrica, por ejemplo); hay dos soluciones
