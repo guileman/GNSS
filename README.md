@@ -1,4 +1,4 @@
-# TopoGNSS — Relevamiento y replanteo con Emlid Reach RS2
+# GNSS — Relevamiento y replanteo con Emlid Reach RS2
 
 Aplicación Android (Kotlin + Jetpack Compose + Room, arquitectura MVVM) para topografía con receptores GNSS RTK que emiten NMEA, pensada y probada en diseño para **Emlid Reach RS2 / RS2+ / RS3**. Funciona 100 % offline.
 
@@ -89,7 +89,7 @@ app/src/test/                  Tests JVM de geodesia, NMEA y COGO
 
 ## Compilar
 
-- **GitHub Actions**: cada push a `main` corre los tests y genera el APK. Descargalo desde la pestaña *Actions → ejecución → Artifacts → TopoGNSS-apk*. Si empujás un tag `v1.0.0`, además se publica como Release.
+- **GitHub Actions**: cada push a `main` corre los tests y genera el APK. Descargalo desde la pestaña *Actions → ejecución → Artifacts → GNSS-apk*. Si empujás un tag `v1.0.0`, además se publica como Release.
 - **Local**: `./gradlew assembleRelease` (JDK 17, Android SDK 35).
 
 ### Página de descarga

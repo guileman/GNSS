@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -296,15 +297,17 @@ fun TopoMap(
     onPointTap: ((Long) -> Unit)? = null,
     dashed: List<List<Pair<Double, Double>>> = emptyList(),
     previews: List<MapPoint> = emptyList(),
+    /** Espacio libre arriba para controles propios de la pantalla que flotan sobre el mapa. */
+    controlsTopPadding: Dp = 0.dp,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as TopoApp
     val provider by app.prefs.mapProvider.collectAsState()
     val googleOk = remember { googleMapsAvailable(context) }
     if (googleOk && provider == "GOOGLE") {
-        GoogleTopoMap(modifier, points, me, target, line, closeLine, follow, rotationDeg, fitKey, onPointTap, dashed, previews)
+        GoogleTopoMap(modifier, points, me, target, line, closeLine, follow, rotationDeg, fitKey, onPointTap, dashed, previews, controlsTopPadding)
     } else {
-        OsmTopoMap(modifier, points, me, target, line, closeLine, follow, rotationDeg, fitKey, onPointTap, dashed, previews)
+        OsmTopoMap(modifier, points, me, target, line, closeLine, follow, rotationDeg, fitKey, onPointTap, dashed, previews, controlsTopPadding)
     }
 }
 
@@ -322,6 +325,7 @@ private fun OsmTopoMap(
     onPointTap: ((Long) -> Unit)?,
     dashed: List<List<Pair<Double, Double>>>,
     previews: List<MapPoint>,
+    controlsTopPadding: Dp,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as TopoApp
@@ -417,7 +421,7 @@ private fun OsmTopoMap(
 
         // Controles flotantes: selector de capa y centrar en mi posición
         Column(
-            Modifier.align(Alignment.TopEnd).padding(8.dp),
+            Modifier.align(Alignment.TopEnd).padding(top = controlsTopPadding).padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.End,
         ) {

@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptor
@@ -75,6 +76,7 @@ internal fun GoogleTopoMap(
     onPointTap: ((Long) -> Unit)?,
     dashed: List<List<Pair<Double, Double>>>,
     previews: List<MapPoint>,
+    controlsTopPadding: Dp,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as TopoApp
@@ -224,7 +226,7 @@ internal fun GoogleTopoMap(
 
         // Controles flotantes: selector de capa y centrar en mi posición
         Column(
-            Modifier.align(Alignment.TopEnd).padding(8.dp),
+            Modifier.align(Alignment.TopEnd).padding(top = controlsTopPadding).padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.End,
         ) {
