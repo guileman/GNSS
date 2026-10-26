@@ -67,6 +67,8 @@ enum class PointKind(val label: String) {
     COGO("COGO"),
     STAKE("A replantear"),
     STAKED("Replanteado"),
+    /** Punto de control terrestre para fotogrametría (se exporta aparte para WebODM). */
+    GCP("GCP"),
 }
 
 @Entity(

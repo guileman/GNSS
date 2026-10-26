@@ -117,7 +117,7 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = topo.repository
     val gnss = topo.gnss.state
     val project = hold(activeProjectFlow(), null)
-    val recent = hold(activePointsFlow().map { l -> l.filter { it.kind == PointKind.SURVEY.name }.reversed() }, emptyList())
+    val recent = hold(activePointsFlow().map { l -> l.filter { it.kind == PointKind.SURVEY.name || it.kind == PointKind.GCP.name }.reversed() }, emptyList())
     /** Todos los puntos del proyecto (relevados, COGO, a replantear…) para dibujarlos en el mapa. */
     val all = hold(activePointsFlow(), emptyList<PointEntity>())
 
@@ -129,6 +129,8 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     var requireFix by mutableStateOf(prefs.surveyRequireFix)
     var antennaHeight by mutableStateOf(prefs.antennaHeight.toString())
     var name by mutableStateOf("")
+    /** Tipo del punto que se va a medir: relevado común o GCP para fotogrametría. */
+    var kind by mutableStateOf(PointKind.SURVEY)
     var code by mutableStateOf("")
     var progress by mutableStateOf<MeasureProgress?>(null)
     var message by mutableStateOf<String?>(null)
@@ -138,9 +140,17 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
     /** Deja el punto como objetivo de Replanteo (la pantalla de replanteo lo toma de acá). */
     fun stake(p: PointEntity) { topo.stakeTarget.value = p.id }
 
+    /** Prefijo del nombre según el tipo: GCP001… para control terrestre, el prefijo configurado para el resto. */
+    private fun namePrefix(k: PointKind) = if (k == PointKind.GCP) "GCP" else prefs.surveyPrefix.ifEmpty { "P" }
+
     fun refreshName(p: ProjectEntity?) {
         if (p == null) return
-        viewModelScope.launch { name = repo.nextName(p.id, prefs.surveyPrefix) }
+        viewModelScope.launch { name = repo.nextName(p.id, namePrefix(kind)) }
+    }
+
+    fun selectKind(k: PointKind, p: ProjectEntity?) {
+        kind = k
+        refreshName(p)
     }
 
     fun saveSettings() {
@@ -171,6 +181,7 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
         if (job?.isActive == true) return
         if (topo.gnss.state.value.connection != ConnectionStatus.CONNECTED) { message = "Receptor desconectado"; return }
         val pointName = name.trim()
+        val pointKind = kind
         if (pointName.isEmpty()) { message = "Ingresá un nombre"; return }
         saveSettings()
         val n = epochs.coerceAtLeast(1)
@@ -214,12 +225,12 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
                 else "Tiempo agotado: $accepted de $n épocas válidas ($rejected rechazadas)."
                 return@launch
             }
-            val pt = average(list, antH, p, pointName)
+            val pt = average(list, antH, p, pointName, pointKind)
             runCatching { repo.insertGeographic(p, pt) }
                 .onSuccess {
                     lastSaved = pt.copy(id = it)
                     message = "✔ $pointName guardado (${list.size} ép., σH ${pt.hrms.f(3)} m)"
-                    name = repo.nextName(p.id, prefs.surveyPrefix.ifEmpty { "P" })
+                    name = repo.nextName(p.id, namePrefix(pointKind))
                 }
                 .onFailure { message = "Error al guardar: ${it.message}" }
         }
@@ -236,7 +247,7 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
      * sub-milimétrico. La dispersión real se calcula en metros (ENU local) y se combina con el σ
      * reportado por el receptor (GST) tomando el mayor de ambos como precisión del punto.
      */
-    private fun average(list: List<Epoch>, antH: Double, project: ProjectEntity, pointName: String): PointEntity {
+    private fun average(list: List<Epoch>, antH: Double, project: ProjectEntity, pointName: String, pointKind: PointKind): PointEntity {
         val lat = list.sumOf { it.lat } / list.size
         val lon = list.sumOf { it.lon } / list.size
         val msl = list.mapNotNull { it.altitudeMsl }.takeIf { it.isNotEmpty() }?.average()
@@ -257,7 +268,7 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
             projectId = project.id,
             name = pointName,
             code = code.trim(),
-            kind = PointKind.SURVEY.name,
+            kind = pointKind.name,
             lat = lat, lon = lon,
             easting = xy.east, northing = xy.north,
             elevation = msl?.minus(antH),
@@ -511,6 +522,17 @@ fun SurveyScreen(
                     }
                     vm.message?.let { Text(it, color = if (it.startsWith("✔")) FixGreen else MaterialTheme.colorScheme.error) }
 
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Tipo", Modifier.padding(end = 4.dp))
+                        FilterChip(selected = vm.kind == PointKind.SURVEY, onClick = { vm.selectKind(PointKind.SURVEY, p) }, label = { Text("Punto", maxLines = 1) })
+                        FilterChip(selected = vm.kind == PointKind.GCP, onClick = { vm.selectKind(PointKind.GCP, p) }, label = { Text("GCP", maxLines = 1) })
+                    }
+                    if (vm.kind == PointKind.GCP) {
+                        Text(
+                            "Control terrestre para fotogrametría." + if (!vm.requireFix) " Conviene exigir solución FIX en los ajustes de medición." else "",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Nombre", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1f))
                         OutlinedTextField(vm.code, { vm.code = it }, label = { Text("Descripción", maxLines = 1) }, singleLine = true, modifier = Modifier.weight(1.4f))

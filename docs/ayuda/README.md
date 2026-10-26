@@ -48,6 +48,14 @@ punto se autoincrementa con el prefijo configurado (P001, P002…); podés agreg
 y la altura de antena. La desviación guardada combina el GST del receptor con la dispersión real
 de las épocas promediadas.
 
+### GCP para fotogrametría
+
+Al medir un punto (botón **+**) el selector **Tipo** permite elegir **Punto** o **GCP**. Un GCP
+(punto de control terrestre) se mide igual que cualquier punto —promediando épocas con los filtros
+de calidad—, pero queda marcado con su propio tipo (color rosa en el mapa y en la lista), con el
+nombre autoincrementado **GCP001, GCP002…**. Para los GCP conviene exigir solución **FIX** y usar
+más épocas (o segundos) en los ajustes de medición. La altura del pole se descuenta como siempre.
+
 ## Puntos
 
 Lista de todos los puntos del proyecto activo, filtrable por tipo (relevado, COGO, a replantear,
@@ -64,6 +72,19 @@ Se puede reemplazar o quitar la foto en cualquier momento.
 
 - **CSV**: exporta todos los puntos visibles (según el filtro activo) con sus coordenadas,
   solución y metadatos, listo para abrir en una planilla.
+- **Exportar GCP (fotogrametría)**: menú **⋮ → Exportar GCP**. Exporta **solo** los puntos de tipo
+  GCP del proyecto (no depende del filtro de la lista) en uno de dos formatos:
+  - **WebODM · GCP Interface (.txt)**: primera línea con el sistema de coordenadas (definición PROJ
+    del sistema del proyecto) y luego una línea `nombre X Y Z` por GCP. Se carga en la herramienta
+    **GCP Interface** de WebODM, donde se marcan los puntos sobre las fotos y se obtiene el
+    `gcp_list.txt` final (que además lleva el píxel de cada punto en cada imagen: eso no lo puede
+    conocer la app).
+  - **CSV (.csv)**: `GCP Label,Easting,Northing,Elevation`, para GCP Editor Pro de WebODM, Pix4D,
+    Metashape o una planilla.
+
+  Las coordenadas salen en el sistema del proyecto (UTM o POSGAR 2007 / Gauss-Krüger). En WebODM
+  hay que indicar ese mismo sistema; el diálogo de exportación lo muestra listo para copiar. La
+  cota es la del punto (con la altura del pole ya descontada); si falta se exporta como 0.000.
 - **Importar**: carga puntos desde un archivo **DXF** o **KML/KMZ** elegido con el selector de
   documentos del sistema. Cada vértice del archivo —de un punto, una línea o una polilínea— se
   importa como un punto individual con prefijo **IMP**; no se conserva la geometría de la

@@ -1,5 +1,12 @@
 package com.topognss.app.ui.points
 
+import com.topognss.app.export.GcpExporter
+import com.topognss.app.export.GcpPoint
+import com.topognss.app.geo.ProjectCrs
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
 import android.app.Application
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -220,6 +227,7 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
                 typeLayer = when (k) {
                     PointKind.SURVEY -> "RELEVADO"; PointKind.COGO -> "COGO"
                     PointKind.STAKE -> "A_REPLANTEAR"; PointKind.STAKED -> "REPLANTEADO"
+                    PointKind.GCP -> "GCP"
                 },
                 e = p.easting, n = p.northing, z = p.elevation,
             )
@@ -231,6 +239,28 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
             type = "application/dxf"
             putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_SUBJECT, "Puntos ${proj.name} (DXF)")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
+    /** Puntos GCP del proyecto (se exportan aparte, sin importar el filtro de la lista). */
+    fun gcpPoints(): List<PointEntity> = points.value.filter { it.kind == PointKind.GCP.name }
+
+    /** Lista de GCP en el formato elegido, lista para cargar en WebODM / programas de fotogrametría. */
+    fun exportGcp(format: GcpExporter.Format): Intent? {
+        val proj = project.value ?: return null
+        val gcps = gcpPoints().map { GcpPoint(it.name, it.easting, it.northing, it.elevation) }
+        if (gcps.isEmpty()) return null
+        val dir = File(topo.cacheDir, "export").apply { mkdirs() }
+        val safe = proj.name.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val suffix = if (format == GcpExporter.Format.WEBODM_GCPI) "GCP_webodm" else "GCP"
+        val file = File(dir, "${safe}_$suffix.${format.extension}")
+        file.writeText(GcpExporter.build(format, proj.crs(), gcps))
+        val uri = FileProvider.getUriForFile(topo, "${topo.packageName}.fileprovider", file)
+        return Intent(Intent.ACTION_SEND).apply {
+            type = format.mime
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "GCP ${proj.name}")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
@@ -273,6 +303,7 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, onBack: () -> 
     var detail by remember { mutableStateOf<PointEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var showGcp by remember { mutableStateOf(false) }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { vm.importFile(it, queryDisplayName(context, it)) }
     }
@@ -280,6 +311,17 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, onBack: () -> 
     val p = project
     if (p == null) { NoProjectCard(onOpenProjects); return }
     val shown = all.filter { vm.filter == null || it.kind == vm.filter!!.name }
+    if (showGcp) {
+        GcpExportDialog(
+            crs = p.crs(),
+            gcps = all.filter { it.kind == PointKind.GCP.name },
+            onExport = { f ->
+                showGcp = false
+                vm.exportGcp(f)?.let { context.startActivity(Intent.createChooser(it, "Exportar GCP")) }
+            },
+            onDismiss = { showGcp = false },
+        )
+    }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -305,6 +347,10 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, onBack: () -> 
                                 menuOpen = false
                                 vm.exportCsv()?.let { context.startActivity(Intent.createChooser(it, "Exportar CSV")) }
                             },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Exportar GCP (fotogrametría)") },
+                            onClick = { menuOpen = false; showGcp = true },
                         )
                         DropdownMenuItem(
                             text = { Text("Reporte de replanteo (PDF)") },
@@ -570,5 +616,62 @@ private fun CsvImportDialog(
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+
+/** Elegir el formato de exportación de los GCP; solo se exportan los puntos de tipo GCP. */
+@Composable
+private fun GcpExportDialog(
+    crs: ProjectCrs,
+    gcps: List<PointEntity>,
+    onExport: (GcpExporter.Format) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var format by remember { mutableStateOf(GcpExporter.Format.WEBODM_GCPI) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Exportar GCP") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (gcps.isEmpty()) {
+                    Text(
+                        "Todavía no hay puntos GCP en este proyecto. Relevalos desde Levantamiento: tocá «+», elegí el tipo " +
+                            "«GCP» y medí. Solo esos puntos se exportan acá.",
+                    )
+                } else {
+                    Text("${gcps.size} punto${if (gcps.size == 1) "" else "s"} GCP · ${crs.describe()} (${GcpExporter.crsLabel(crs)})")
+                    GcpExporter.Format.entries.forEach { f ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { format = f },
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            RadioButton(selected = format == f, onClick = { format = f })
+                            Column(Modifier.padding(top = 10.dp)) {
+                                Text(f.label, fontWeight = FontWeight.Medium)
+                                Text(f.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    val sinCota = gcps.count { it.elevation == null }
+                    if (sinCota > 0) {
+                        Text(
+                            "$sinCota punto${if (sinCota == 1) "" else "s"} sin cota: se exporta${if (sinCota == 1) "" else "n"} con 0.000.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Text(
+                        "Sistema de coordenadas (para la casilla EPSG/PROJ de WebODM):",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(GcpExporter.projString(crs), fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            if (gcps.isNotEmpty()) TextButton(onClick = { onExport(format) }) { Text("Exportar") }
+            else TextButton(onClick = onDismiss) { Text("Entendido") }
+        },
+        dismissButton = { if (gcps.isNotEmpty()) TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
 }
