@@ -7,6 +7,8 @@ import com.topognss.app.geo.LocalGeodesy
 import com.topognss.app.geo.ProjectCrs
 import com.topognss.app.export.DxfExporter
 import com.topognss.app.export.DxfPoint
+import com.topognss.app.export.GcpExporter
+import com.topognss.app.export.GcpPoint
 import com.topognss.app.gnss.NmeaAggregator
 import com.topognss.app.importer.CsvCol
 import com.topognss.app.importer.CsvOrder
@@ -195,5 +197,26 @@ class CoreLogicTest {
         assertEquals(2.0, off.e, 1e-9); assertEquals(5.0, off.n, 1e-9)
         val (st, of) = Cogo.inverseStationOffset(a, b, off)
         assertEquals(5.0, st, 1e-9); assertEquals(2.0, of, 1e-9)
+    }
+
+    @Test fun gcpExportWebOdmGcpi() {
+        val pts = listOf(GcpPoint("GCP001", 373317.5022, 6170036.1713, 12.345), GcpPoint("GCP 002", 373400.0, 6170100.5, null))
+        val txt = GcpExporter.build(GcpExporter.Format.WEBODM_GCPI, ProjectCrs(CrsType.UTM, zone = 21, south = true), pts)
+        val lines = txt.trim().lines()
+        assertEquals("+proj=utm +zone=21 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs", lines[0])
+        assertEquals("GCP001 373317.502 6170036.171 12.345", lines[1])
+        assertEquals("GCP_002 373400.000 6170100.500 0.000", lines[2]) // sin espacios en el nombre; cota 0.0 si falta
+        assertEquals(3, lines.size)
+    }
+
+    @Test fun gcpExportCsvAndCrs() {
+        val crs = ProjectCrs(CrsType.POSGAR_GK, zone = 5)
+        val csv = GcpExporter.build(GcpExporter.Format.CSV, crs, listOf(GcpPoint("A,1", 5428933.853, 6380679.159, 23.679))).trim().lines()
+        assertEquals("GCP Label,Easting,Northing,Elevation", csv[0])
+        assertEquals("A_1,5428933.853,6380679.159,23.679", csv[1])
+        assertEquals("EPSG:5347", GcpExporter.crsLabel(crs))
+        assertTrue(GcpExporter.projString(crs).contains("+lon_0=-60 +k=1 +x_0=5500000"))
+        assertEquals("EPSG:32721", GcpExporter.crsLabel(ProjectCrs(CrsType.UTM, zone = 21, south = true)))
+        assertEquals("EPSG:32619", GcpExporter.crsLabel(ProjectCrs(CrsType.UTM, zone = 19, south = false)))
     }
 }

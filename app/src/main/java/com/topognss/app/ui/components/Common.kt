@@ -204,6 +204,7 @@ fun KindBadge(kind: PointKind) {
         PointKind.COGO -> MaterialTheme.colorScheme.tertiary
         PointKind.STAKE -> Color(0xFF7C3AED)
         PointKind.STAKED -> FixGreen
+        PointKind.GCP -> Color(0xFFD81B60)
     }
     Box(Modifier.background(c.copy(alpha = 0.15f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp)) {
         Text(kind.label, color = c, fontSize = 11.sp, fontWeight = FontWeight.Medium)
