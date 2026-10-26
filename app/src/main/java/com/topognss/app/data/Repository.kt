@@ -126,6 +126,20 @@ class AppPrefs(context: Context) {
         _mapProvider.value = p
     }
 
+    /** Actualizaciones: buscar sola al abrir la app, fecha de la última consulta y versión pospuesta por el usuario. */
+    private val _autoUpdates = MutableStateFlow(sp.getBoolean("autoUpdates", true))
+    val autoUpdates: StateFlow<Boolean> = _autoUpdates
+    fun setAutoUpdates(v: Boolean) {
+        sp.edit().putBoolean("autoUpdates", v).apply()
+        _autoUpdates.value = v
+    }
+    var lastUpdateCheck: Long
+        get() = sp.getLong("lastUpdateCheck", 0L)
+        set(v) = sp.edit().putLong("lastUpdateCheck", v).apply()
+    var dismissedUpdate: String
+        get() = sp.getString("dismissedUpdate", "") ?: ""
+        set(v) = sp.edit().putString("dismissedUpdate", v).apply()
+
     var lastHost: String
         get() = sp.getString("host", "192.168.42.1") ?: "192.168.42.1"
         set(v) = sp.edit().putString("host", v).apply()

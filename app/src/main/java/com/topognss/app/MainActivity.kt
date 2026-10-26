@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -112,6 +114,29 @@ private fun AppRoot(app: TopoApp) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
         }
         permLauncher.launch(perms.toTypedArray())
+    }
+
+    // Búsqueda automática de una versión nueva al abrir la app (silenciosa; avisa solo si hay una más nueva)
+    val updatePrompt by app.updates.prompt.collectAsState()
+    LaunchedEffect(Unit) { if (app.prefs.autoUpdates.value) app.updates.check(auto = true) }
+    updatePrompt?.let { info ->
+        AlertDialog(
+            onDismissRequest = { app.updates.dismissPrompt(true) },
+            title = { Text("Versión nueva disponible") },
+            text = {
+                Text(
+                    "Está disponible ${info.tag}. Se descarga dentro de la app y después Android te pide confirmar la instalación.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    app.updates.dismissPrompt(false)
+                    app.updates.download()
+                    nav.navigate(ROUTE_SETTINGS) { launchSingleTop = true }
+                }) { Text("Descargar") }
+            },
+            dismissButton = { TextButton(onClick = { app.updates.dismissPrompt(true) }) { Text("Más tarde") } },
+        )
     }
 
     val showStrip = route in STATUS_ROUTES
