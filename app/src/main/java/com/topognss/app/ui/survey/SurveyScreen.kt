@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.SatelliteAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.AlertDialog
@@ -91,6 +92,7 @@ import com.topognss.app.ui.components.PointRow
 import com.topognss.app.ui.components.SectionTitle
 import com.topognss.app.ui.components.f
 import com.topognss.app.ui.components.parseNum
+import com.topognss.app.ui.components.rememberNow
 import com.topognss.app.ui.hold
 import com.topognss.app.ui.map.TopoMap
 import com.topognss.app.ui.map.toMapMe
@@ -277,7 +279,8 @@ class SurveyViewModel(app: Application) : AndroidViewModel(app) {
 
 /**
  * Levantamiento (estilo Emlid Flow): el mapa ocupa toda la pantalla; "+" abre el panel para medir.
- * Atajos con nombre en el mapa: Cálculo y Puntos a la izquierda, Replantear a la derecha.
+ * Botones flotantes en el mapa: Cálculo y Puntos a la izquierda, Replantear a la derecha. Arriba, el estado
+ * de la conexión con el receptor es un icono que abre la pantalla Receptores.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -287,6 +290,7 @@ fun SurveyScreen(
     onOpenCogo: () -> Unit,
     onOpenStakeout: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenConnection: () -> Unit,
     vm: SurveyViewModel = viewModel(),
 ) {
     val project by vm.project.collectAsState()
@@ -294,7 +298,7 @@ fun SurveyScreen(
     val all by vm.all.collectAsState()
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var panelOpen by rememberSaveable { mutableStateOf(false) }
-    // Punto tocado en el mapa: muestra su ficha con el atajo Replantear
+    // Punto tocado en el mapa: muestra su ficha; la flecha flotante lo replantea
     var tappedId by rememberSaveable { mutableStateOf<Long?>(null) }
     val tapped = all.firstOrNull { it.id == tappedId }
 
@@ -310,6 +314,8 @@ fun SurveyScreen(
 
     val connected = s.connection == ConnectionStatus.CONNECTED
     val ready = connected && s.hasPosition
+    val now = rememberNow()
+    val connColor = solutionColor(s, connected && s.isStale(now))
     val prog = vm.progress
 
     Column(Modifier.fillMaxSize().imePadding()) {
@@ -342,7 +348,7 @@ fun SurveyScreen(
                         Icon(Icons.Filled.Folder, contentDescription = null, Modifier.size(18.dp))
                         Text(
                             p.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 170.dp),
+                            modifier = Modifier.widthIn(max = 110.dp),
                         )
                     }
                 }
@@ -353,6 +359,22 @@ fun SurveyScreen(
                     color = MaterialTheme.colorScheme.surface,
                 ) {
                     Icon(Icons.Filled.Settings, contentDescription = "Ajustes", Modifier.padding(10.dp).size(22.dp))
+                }
+                // Estado de la conexión: el punto de color es la solución (verde FIX, amarillo FLOAT, rojo sin datos)
+                Surface(
+                    onClick = onOpenConnection,
+                    shape = CircleShape,
+                    shadowElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                ) {
+                    Box(Modifier.padding(10.dp).size(22.dp)) {
+                        Icon(Icons.Filled.SatelliteAlt, contentDescription = "Receptor: ${if (connected) s.solution.label else "sin conexión"}", Modifier.fillMaxSize())
+                        Box(
+                            Modifier.align(Alignment.TopEnd).size(10.dp)
+                                .background(MaterialTheme.colorScheme.surface, CircleShape).padding(1.5.dp)
+                                .background(connColor, CircleShape)
+                        )
+                    }
                 }
             }
 
@@ -367,7 +389,8 @@ fun SurveyScreen(
                         MapRoundButton(Icons.AutoMirrored.Filled.List, "Puntos", onOpenPoints)
                     }
                     MapRoundButton(
-                        Icons.Filled.NearMe, "Replantear", onOpenStakeout,
+                        Icons.Filled.NearMe, "Replantear",
+                        { tapped?.let { vm.stake(it); tappedId = null }; onOpenStakeout() },
                         modifier = Modifier.align(Alignment.BottomEnd),
                     )
                     if (!panelOpen) {
@@ -425,14 +448,6 @@ fun SurveyScreen(
                             )
                         }
                         IconButton(onClick = { tappedId = null }) { Icon(Icons.Filled.Close, contentDescription = "Cerrar") }
-                    }
-                    Button(
-                        onClick = { vm.stake(tapped); tappedId = null; onOpenStakeout() },
-                        shape = RoundedCornerShape(28.dp),
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                    ) {
-                        Icon(Icons.Filled.NearMe, contentDescription = null, Modifier.size(20.dp))
-                        Text("  Replantear", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
