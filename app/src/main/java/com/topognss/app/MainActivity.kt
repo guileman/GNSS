@@ -68,7 +68,7 @@ private const val ROUTE_PLUMB = "plumb"
 private const val ROUTE_SETTINGS = "settings"
 
 /** Pantallas donde se muestra la franja de estado del receptor. */
-private val STATUS_ROUTES = setOf(Dest.SURVEY.route, ROUTE_POINTS, ROUTE_STAKEOUT)
+private val STATUS_ROUTES = setOf(ROUTE_STAKEOUT)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -162,6 +162,7 @@ private fun AppRoot(app: TopoApp) {
                     onOpenCogo = { nav.navigate(ROUTE_COGO) { launchSingleTop = true } },
                     onOpenStakeout = { nav.navigate(ROUTE_STAKEOUT) { launchSingleTop = true } },
                     onOpenSettings = openSettings,
+                    onOpenConnection = { nav.goTab(Dest.CONNECTION) },
                 )
             }
             composable(Dest.PROJECTS.route) {
