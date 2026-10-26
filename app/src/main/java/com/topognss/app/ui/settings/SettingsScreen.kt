@@ -1,6 +1,14 @@
 package com.topognss.app.ui.settings
 
 import androidx.compose.foundation.clickable
+import android.widget.Toast
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Switch
+import androidx.compose.ui.text.font.FontWeight
+import com.topognss.app.update.UpdateState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -100,6 +108,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenPlumb: () -> Unit) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
                 }
             }
+            Section("Actualizaciones") { UpdateContent(app) }
             Section("Acerca de") {
                 Row(Modifier.fillMaxWidth().padding(16.dp)) {
                     Text("Versión", Modifier.weight(1f))
@@ -115,5 +124,73 @@ private fun Section(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         Card(Modifier.fillMaxWidth()) { Column { content() } }
+    }
+}
+
+/** Buscar, descargar e instalar la última versión publicada en GitHub sin salir de la app. */
+@Composable
+private fun UpdateContent(app: TopoApp) {
+    val um = app.updates
+    val context = LocalContext.current
+    val st by um.state.collectAsState()
+    val auto by app.prefs.autoUpdates.collectAsState()
+    fun mb(bytes: Long) = if (bytes > 0) " · %.1f MB".format(bytes / 1048576.0) else ""
+
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        when (val s = st) {
+            UpdateState.Idle, UpdateState.UpToDate -> {
+                Text(
+                    if (s == UpdateState.UpToDate) "Tenés la última versión (${um.currentVersion})." else "Versión instalada: ${um.currentVersion}",
+                )
+                Button(onClick = { um.check() }) { Text("Buscar actualización") }
+            }
+            UpdateState.Checking -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("Buscando…")
+            }
+            is UpdateState.Available -> {
+                Text("Hay una versión nueva: ${s.info.tag}${mb(s.info.sizeBytes)}", fontWeight = FontWeight.SemiBold)
+                if (s.info.notes.isNotBlank()) {
+                    Text(s.info.notes.take(500), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Button(onClick = { um.download() }) { Text("Descargar") }
+            }
+            is UpdateState.Downloading -> {
+                Text("Descargando ${s.info.tag}… ${(s.progress * 100).toInt()} %")
+                LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth())
+            }
+            is UpdateState.Ready -> {
+                Text("Lista para instalar: ${s.info.tag}", fontWeight = FontWeight.SemiBold)
+                if (s.sameSigner == false) {
+                    Text(
+                        "Esta versión está firmada con otra clave, y Android no permite instalarla encima de la actual. " +
+                            "Para instalarla hay que desinstalar la app antes, y se pierden los proyectos guardados en el teléfono: " +
+                            "exportá tus puntos (Puntos → ⋮ → Exportar CSV) antes de seguir.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                Button(onClick = {
+                    if (um.canInstall()) um.install() else {
+                        Toast.makeText(context, "Permití instalar apps desde GNSS y volvé a tocar Instalar", Toast.LENGTH_LONG).show()
+                        um.openInstallPermission()
+                    }
+                }) { Text("Instalar") }
+            }
+            is UpdateState.Error -> {
+                Text(s.message, color = MaterialTheme.colorScheme.error)
+                Button(onClick = { um.check() }) { Text("Reintentar") }
+            }
+        }
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Buscar al abrir la app")
+                Text(
+                    "Avisa si hay una versión nueva (necesita Internet)",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = auto, onCheckedChange = { app.prefs.setAutoUpdates(it) })
+        }
     }
 }

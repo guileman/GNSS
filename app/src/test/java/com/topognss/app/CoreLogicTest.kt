@@ -10,6 +10,7 @@ import com.topognss.app.export.DxfPoint
 import com.topognss.app.export.GcpExporter
 import com.topognss.app.export.GcpPoint
 import com.topognss.app.gnss.NmeaAggregator
+import com.topognss.app.update.Versions
 import com.topognss.app.importer.CsvCol
 import com.topognss.app.importer.CsvOrder
 import com.topognss.app.importer.PointCsv
@@ -218,5 +219,15 @@ class CoreLogicTest {
         assertTrue(GcpExporter.projString(crs).contains("+lon_0=-60 +k=1 +x_0=5500000"))
         assertEquals("EPSG:32721", GcpExporter.crsLabel(ProjectCrs(CrsType.UTM, zone = 21, south = true)))
         assertEquals("EPSG:32619", GcpExporter.crsLabel(ProjectCrs(CrsType.UTM, zone = 19, south = false)))
+    }
+
+    @Test fun updateVersionComparison() {
+        assertEquals(listOf(1, 0, 45), Versions.parse("v1.0.45"))
+        assertTrue(Versions.isNewer("v1.0.45", "1.0.44"))
+        assertTrue(Versions.isNewer("v1.0.10", "1.0.9"))      // numérica, no alfabética
+        assertTrue(Versions.isNewer("v1.1.0", "1.0.99"))
+        assertTrue(!Versions.isNewer("v1.0.44", "1.0.44"))
+        assertTrue(!Versions.isNewer("v1.0.39", "1.0.44"))
+        assertTrue(!Versions.isNewer("prueba-conexion-bt-wifi", "1.0.44")) // tags que no son versión se ignoran
     }
 }

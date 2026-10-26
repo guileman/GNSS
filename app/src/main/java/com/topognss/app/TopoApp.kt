@@ -24,6 +24,7 @@ class TopoApp : Application() {
     lateinit var compass: CompassSensor
         private set
     val gnss: GnssManager by lazy { GnssManager() }
+    val updates: com.topognss.app.update.UpdateManager by lazy { com.topognss.app.update.UpdateManager(this, prefs) }
 
     /** Punto objetivo elegido para replantear (compartido entre la lista de puntos y el replanteo). */
     val stakeTarget = MutableStateFlow<Long?>(null)
