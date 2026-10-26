@@ -1,9 +1,12 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Jalón con receptor y marcas de replanteo -->
-    <path android:fillColor="#FFFFFF" android:pathData="M42,36 a12,6 0 1,0 24,0 a12,6 0 1,0 -24,0z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M52.5,40h3v34h-3z" />
-    <path android:strokeColor="#F2B705" android:strokeWidth="3" android:fillColor="#00000000"
-        android:pathData="M54,76 m-10,0 a10,4 0 1,0 20,0 a10,4 0 1,0 -20,0" />
-    <path android:fillColor="#F2B705" android:pathData="M40,76h28v2h-28z" />
+    <!-- Diana: anillos concéntricos, punto central y marcas de puntería -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="4" android:fillColor="#00000000"
+        android:pathData="M27,54 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0z" />
+    <path android:strokeColor="#3FBF84" android:strokeWidth="4" android:fillColor="#00000000"
+        android:pathData="M37,54 a17,17 0 1,0 34,0 a17,17 0 1,0 -34,0z" />
+    <path android:fillColor="#F2B705"
+        android:pathData="M46,54 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M54,17 L54,24 M54,84 L54,91 M17,54 L24,54 M84,54 L91,54" />
 </vector>

@@ -1,4 +1,4 @@
-# Ayuda — TopoGNSS
+# Ayuda — GNSS
 
 Guía de uso de todas las funciones de la app, con diagramas explicativos en vez de capturas de
 pantalla reales (la numeración y el aspecto exacto de cada pantalla puede cambiar; los diagramas

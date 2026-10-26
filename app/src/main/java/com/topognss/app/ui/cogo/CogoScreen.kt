@@ -33,6 +33,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -355,15 +362,19 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
     if (proj == null) { NoProjectCard(onOpenProjects); return }
     val sel = vm.selectedPoints(all)
 
-    Column(Modifier.fillMaxSize()) {
-        ScreenHeader(title = "Cálculo", onBack = onBack)
-        // Cinco herramientas: pestañas desplazables y de una sola línea (antes se partían en medio de la palabra)
-        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
+    // Cinco herramientas: pestañas desplazables y de una sola línea (antes se partían en medio de la palabra)
+    val tabs: @Composable () -> Unit = {
+        ScrollableTabRow(
+            selectedTabIndex = tab, edgePadding = 4.dp,
+            containerColor = Color.Transparent, divider = {},
+        ) {
             listOf("Medición", "Crear puntos", "Resección", "Curva", "Poligonal").forEachIndexed { i, label ->
                 Tab(selected = tab == i, onClick = { tab = i }, text = { Text(label, maxLines = 1, softWrap = false) })
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    }
+    val selection: @Composable () -> Unit = {
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (sel.isEmpty()) "Tocá los puntos en orden" else sel.joinToString(" → ") { it.name },
                 Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 2,
@@ -371,24 +382,49 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
             TextButton(onClick = { selectOnMap = !selectOnMap }) { Text(if (selectOnMap) "Lista" else "Mapa") }
             TextButton(onClick = { vm.clear() }) { Text("Limpiar") }
         }
-        // Lista de selección (alto acotado) + resultados abajo
-        if (selectOnMap) {
-            val tm = proj.crs().projection
-            fun ll(p: P3): Pair<Double, Double> = tm.inverse(p.e, p.n).let { it.lat to it.lon }
-            val sketch = sketchFor(tab, sel, vm)
-            TopoMap(
-                modifier = Modifier.fillMaxWidth().height(280.dp),
-                points = all.map { p -> p.toMapPoint(order = vm.selected.indexOf(p.id).takeIf { it >= 0 }?.plus(1)) },
-                line = sel.map { it.lat to it.lon },
-                closeLine = tab == 0 && vm.closePolygon && sel.size >= 3,
-                fitKey = proj.id,
-                onPointTap = { id -> vm.toggle(id) },
-                dashed = sketch.dashed.map { seg -> seg.map(::ll) },
-                previews = sketch.points.map { (n, p) -> ll(p).let { (la, lo) -> MapPoint(-1, n, la, lo, PREVIEW_COLOR) } },
-            )
-        } else {
-            OrderedPointSelector(all, vm.selected, vm::toggle, Modifier.fillMaxWidth().heightIn(max = 260.dp))
-        }
+    }
+    val glass = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+
+    // El mapa ocupa la mitad de la pantalla y el encabezado flota encima (como los botones de Levantamiento)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            if (selectOnMap) {
+                val tm = proj.crs().projection
+                fun ll(p: P3): Pair<Double, Double> = tm.inverse(p.e, p.n).let { it.lat to it.lon }
+                val sketch = sketchFor(tab, sel, vm)
+                Box(Modifier.fillMaxWidth().height(maxHeight * 0.52f)) {
+                    TopoMap(
+                        modifier = Modifier.fillMaxSize(),
+                        points = all.map { p -> p.toMapPoint(order = vm.selected.indexOf(p.id).takeIf { it >= 0 }?.plus(1)) },
+                        line = sel.map { it.lat to it.lon },
+                        closeLine = tab == 0 && vm.closePolygon && sel.size >= 3,
+                        fitKey = proj.id,
+                        onPointTap = { id -> vm.toggle(id) },
+                        dashed = sketch.dashed.map { seg -> seg.map(::ll) },
+                        previews = sketch.points.map { (n, p) -> ll(p).let { (la, lo) -> MapPoint(-1, n, la, lo, PREVIEW_COLOR) } },
+                        controlsTopPadding = 56.dp,
+                    )
+                    Row(
+                        Modifier.align(Alignment.TopStart).fillMaxWidth().padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Surface(shape = CircleShape, color = glass, shadowElevation = 4.dp) {
+                            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }
+                        }
+                        Surface(Modifier.weight(1f), shape = RoundedCornerShape(24.dp), color = glass, shadowElevation = 4.dp) { tabs() }
+                    }
+                    Surface(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp),
+                        shape = RoundedCornerShape(16.dp), color = glass, shadowElevation = 4.dp,
+                    ) { selection() }
+                }
+            } else {
+                ScreenHeader(title = "Cálculo", onBack = onBack)
+                tabs()
+                selection()
+                OrderedPointSelector(all, vm.selected, vm::toggle, Modifier.fillMaxWidth().heightIn(max = 260.dp))
+            }
 
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(12.dp)) {
             if (tab == 0) {
@@ -399,6 +435,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
             else if (tab == 2) ResectionPanel(sel, vm)
             else if (tab == 3) CurvePanel(sel, vm)
             else TraversePanel(sel, vm)
+        }
         }
     }
 }
