@@ -109,6 +109,35 @@ data class PointEntity(
     val photoPath: String? = null,
 )
 
+/**
+ * Bloque del reporte PDF: un grupo de puntos (en orden) cuya medición —coordenadas, tramos,
+ * ángulos y, si está cerrado, superficie y perímetro— se imprime como un cuadro de información.
+ * Guarda referencias a los puntos, no copias: el reporte siempre usa los datos actuales.
+ */
+@Entity(
+    tableName = "report_blocks",
+    foreignKeys = [ForeignKey(
+        entity = ProjectEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["projectId"],
+        onDelete = ForeignKey.CASCADE,
+    )],
+    indices = [Index("projectId")],
+)
+data class ReportBlockEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val projectId: Long,
+    val name: String,
+    val description: String = "",
+    /** Ids de los puntos EN ORDEN, separados por coma. */
+    val pointIds: String,
+    /** Polígono cerrado: suma superficie, perímetro y el lado de cierre. */
+    val closed: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+fun ReportBlockEntity.idList(): List<Long> = pointIds.split(',').mapNotNull { it.trim().toLongOrNull() }
+
 fun PointEntity.pointKind(): PointKind = runCatching { PointKind.valueOf(kind) }.getOrDefault(PointKind.SURVEY)
 
 @Dao
@@ -159,6 +188,21 @@ interface PointDao {
     suspend fun delete(p: PointEntity)
 }
 
+@Dao
+interface ReportBlockDao {
+    @Query("SELECT * FROM report_blocks WHERE projectId = :projectId ORDER BY createdAt ASC, id ASC")
+    fun observeByProject(projectId: Long): Flow<List<ReportBlockEntity>>
+
+    @Insert
+    suspend fun insert(b: ReportBlockEntity): Long
+
+    @Update
+    suspend fun update(b: ReportBlockEntity)
+
+    @Delete
+    suspend fun delete(b: ReportBlockEntity)
+}
+
 /** v1 → v2: agrega la columna de la foto georreferenciada por punto y las columnas de nomenclatura catastral del proyecto. */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -171,15 +215,33 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
-@Database(entities = [ProjectEntity::class, PointEntity::class], version = 2, exportSchema = false)
+/** v2 → v3: tabla de bloques de medición del reporte PDF. */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `report_blocks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`projectId` INTEGER NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, " +
+                "`pointIds` TEXT NOT NULL, `closed` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                "FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_report_blocks_projectId` ON `report_blocks` (`projectId`)")
+    }
+}
+
+@Database(
+    entities = [ProjectEntity::class, PointEntity::class, ReportBlockEntity::class],
+    version = 3,
+    exportSchema = false,
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun pointDao(): PointDao
+    abstract fun reportBlockDao(): ReportBlockDao
 
     companion object {
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "topognss.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

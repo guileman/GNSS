@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.topognss.app.TopoApp
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.ProjectEntity
+import com.topognss.app.data.ReportBlockEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,3 +26,7 @@ fun AndroidViewModel.activeProjectFlow(): Flow<ProjectEntity?> =
 @OptIn(ExperimentalCoroutinesApi::class)
 fun AndroidViewModel.activePointsFlow(): Flow<List<PointEntity>> =
     topo.prefs.activeProjectId.flatMapLatest { id -> if (id > 0) topo.repository.observePoints(id) else flowOf(emptyList()) }
+
+@OptIn(ExperimentalCoroutinesApi::class)
+fun AndroidViewModel.activeBlocksFlow(): Flow<List<ReportBlockEntity>> =
+    topo.prefs.activeProjectId.flatMapLatest { id -> if (id > 0) topo.repository.observeBlocks(id) else flowOf(emptyList()) }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -88,7 +89,10 @@ import com.topognss.app.cogo.netArea
 import com.topognss.app.cogo.resectionTienstra
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
+import com.topognss.app.data.ReportBlockEntity
+import com.topognss.app.data.idList
 import com.topognss.app.data.crs
+import com.topognss.app.ui.activeBlocksFlow
 import com.topognss.app.ui.activePointsFlow
 import com.topognss.app.ui.activeProjectFlow
 import com.topognss.app.ui.components.KeyValue
@@ -142,6 +146,62 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
     var newName by mutableStateOf("")
     var newCode by mutableStateOf("")
     var message by mutableStateOf<String?>(null)
+
+    // --- Bloques del reporte PDF ---
+    val blocks = hold(activeBlocksFlow(), emptyList())
+    var showAddBlock by mutableStateOf(false)
+    var showBlocks by mutableStateOf(false)
+    var editingBlock by mutableStateOf<ReportBlockEntity?>(null)
+    var blockName by mutableStateOf("")
+    var blockDesc by mutableStateOf("")
+    var blockClosed by mutableStateOf(false)
+    var blockPointIds by mutableStateOf<List<Long>>(emptyList())
+    var blockMessage by mutableStateOf<String?>(null)
+
+    /** Abre el diálogo para agregar la selección actual al reporte como un bloque nuevo. */
+    fun openAddBlock(sel: List<PointEntity>) {
+        editingBlock = null
+        blockMessage = null
+        blockPointIds = sel.map { it.id }
+        blockName = if (sel.size == 2) "${sel[0].name} → ${sel[1].name}" else "Bloque ${blocks.value.size + 1}"
+        blockDesc = ""
+        blockClosed = closePolygon && sel.size >= 3
+        showAddBlock = true
+    }
+
+    fun openEditBlock(b: ReportBlockEntity) {
+        editingBlock = b
+        blockMessage = null
+        blockPointIds = b.idList()
+        blockName = b.name
+        blockDesc = b.description
+        blockClosed = b.closed
+        showAddBlock = true
+    }
+
+    fun confirmBlock() = viewModelScope.launch {
+        val pid = project.value?.id ?: return@launch
+        val name = blockName.trim().ifBlank { return@launch }
+        val closed = blockClosed && blockPointIds.size >= 3
+        val editing = editingBlock
+        if (editing != null) {
+            repo.updateBlock(editing.copy(name = name, description = blockDesc.trim(), closed = closed))
+            blockMessage = "✔ Bloque «$name» actualizado"
+        } else {
+            repo.addBlock(
+                ReportBlockEntity(
+                    projectId = pid, name = name, description = blockDesc.trim(),
+                    pointIds = blockPointIds.joinToString(","), closed = closed,
+                )
+            )
+            selected.clear()
+            blockMessage = "✔ Bloque «$name» agregado al reporte (${blocks.value.size + 1} en total)"
+        }
+        showAddBlock = false
+        editingBlock = null
+    }
+
+    fun deleteBlock(b: ReportBlockEntity) = viewModelScope.launch { repo.deleteBlock(b) }
 
     // --- Poligonal con ajuste (Bowditch) ---
     val legAzimuth = mutableStateListOf("")
@@ -451,6 +511,7 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
     if (proj == null) { NoProjectCard(onOpenProjects); return }
     val sel = vm.selectedPoints(all)
     val glass = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    ReportBlockDialogs(all, vm)
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val sheetHeight = this@BoxWithConstraints.maxHeight * (if (expanded) 0.62f else 0.32f)
@@ -553,11 +614,14 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
                             .padding(horizontal = 12.dp).padding(bottom = 12.dp),
                     ) {
                         when (tab) {
-                            0 -> if (expanded) {
-                                MeasurementResults(sel, all, vm, proj.crs().projection.let { tm ->
-                                    sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
-                                })
-                            } else MeasurementCompact(sel) { expanded = true }
+                            0 -> {
+                                if (expanded) {
+                                    MeasurementResults(sel, all, vm, proj.crs().projection.let { tm ->
+                                        sel.firstOrNull()?.let { tm.pointScale(it.lat, it.lon) }
+                                    })
+                                } else MeasurementCompact(sel) { expanded = true }
+                                ReportBlockActions(sel, vm)
+                            }
                             1 -> CreatePanel(sel, vm)
                             2 -> ResectionPanel(sel, vm)
                             3 -> CurvePanel(sel, vm)
@@ -567,6 +631,100 @@ fun CogoScreen(onOpenProjects: () -> Unit, onBack: () -> Unit, vm: CogoViewModel
                 }
             }
         }
+    }
+}
+
+/**
+ * «Agregar al reporte»: guarda la selección actual (2 o más puntos) como un bloque del reporte PDF,
+ * con nombre y descripción, y limpia la selección para armar el siguiente. «Bloques» lista, edita y quita.
+ */
+@Composable
+private fun ReportBlockActions(sel: List<PointEntity>, vm: CogoViewModel) {
+    val blocks by vm.blocks.collectAsState()
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        TextButton(onClick = { vm.openAddBlock(sel) }, enabled = sel.size >= 2) { Text("Agregar al reporte") }
+        TextButton(onClick = { vm.showBlocks = true }) { Text("Bloques (${blocks.size})") }
+    }
+    vm.blockMessage?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+@Composable
+private fun ReportBlockDialogs(all: List<PointEntity>, vm: CogoViewModel) {
+    val blocks by vm.blocks.collectAsState()
+    fun names(ids: List<Long>) = ids.mapNotNull { id -> all.firstOrNull { it.id == id }?.name }.joinToString(" → ")
+
+    if (vm.showBlocks) {
+        AlertDialog(
+            onDismissRequest = { vm.showBlocks = false },
+            title = { Text("Bloques del reporte (${blocks.size})") },
+            text = {
+                if (blocks.isEmpty()) {
+                    Text("Todavía no hay bloques. Elegí 2 o más puntos en Medición y tocá «Agregar al reporte».")
+                } else {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        blocks.forEachIndexed { i, b ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("${i + 1}. ${b.name}", style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        names(b.idList()) + if (b.closed) " · cerrado" else "",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (b.description.isNotBlank()) {
+                                        Text(b.description, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                TextButton(onClick = { vm.openEditBlock(b) }) { Text("Editar") }
+                                IconButton(onClick = { vm.deleteBlock(b) }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Quitar del reporte")
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.showBlocks = false }) { Text("Cerrar") } },
+        )
+    }
+
+    if (vm.showAddBlock) {
+        val editing = vm.editingBlock != null
+        AlertDialog(
+            onDismissRequest = { vm.showAddBlock = false },
+            title = { Text(if (editing) "Editar bloque" else "Agregar al reporte") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        names(vm.blockPointIds).ifBlank { "Sin puntos" },
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = vm.blockName, onValueChange = { vm.blockName = it },
+                        label = { Text("Nombre del bloque") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = vm.blockDesc, onValueChange = { vm.blockDesc = it },
+                        label = { Text("Descripción (opcional)") }, minLines = 2, modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (vm.blockPointIds.size >= 3) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = vm.blockClosed, onCheckedChange = { vm.blockClosed = it })
+                            Text("  Polígono cerrado (superficie y perímetro)", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.confirmBlock() }, enabled = vm.blockName.isNotBlank()) {
+                    Text(if (editing) "Guardar" else "Agregar")
+                }
+            },
+            dismissButton = { TextButton(onClick = { vm.showAddBlock = false }) { Text("Cancelar") } },
+        )
     }
 }
 
