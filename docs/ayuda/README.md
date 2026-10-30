@@ -11,7 +11,7 @@ describen el concepto, no un layout fijo).
 - [Puntos](#puntos)
   - [Fotografías georreferenciadas](#fotografías-georreferenciadas)
   - [Exportar / importar](#exportar--importar)
-  - [Reporte de replanteo en PDF](#reporte-de-replanteo-en-pdf)
+  - [Reporte en PDF](#reporte-en-pdf)
 - [Cálculo (COGO)](#cálculo-cogo)
   - [Medición](#medición)
   - [Crear puntos](#crear-puntos)
@@ -19,6 +19,7 @@ describen el concepto, no un layout fijo).
   - [Intersección y resección](#intersección-y-resección)
   - [Curvas horizontales](#curvas-horizontales)
   - [Superficie con descuento](#superficie-con-descuento)
+  - [Agregar mediciones al reporte](#agregar-mediciones-al-reporte)
 - [Replanteo](#replanteo)
   - [Modo Punto](#modo-punto)
   - [Modo Eje](#modo-eje)
@@ -91,11 +92,18 @@ Se puede reemplazar o quitar la foto en cualquier momento.
   polilínea original, solo sus vértices sueltos. Los puntos de un DXF se cargan en las planas del
   proyecto; los de un KML/KMZ, en geográficas WGS84.
 
-### Reporte de replanteo en PDF
+### Reporte en PDF
 
-El botón **PDF** genera y comparte (por cualquier app instalada: Drive, WhatsApp, correo…) una
-tabla con todos los puntos "Replanteado" del proyecto y sus residuos respecto del objetivo
-(dN, dE, distancia, corte/relleno), paginada automáticamente si hay muchos.
+Menú **⋮ → Reporte (PDF)**. Genera y comparte (por cualquier app instalada: Drive, WhatsApp,
+correo…) un PDF del proyecto con dos secciones, cada una solo si tiene contenido:
+
+- **Mediciones**: un cuadro por cada bloque que agregaste desde Cálculo → Medición (ver
+  [Agregar mediciones al reporte](#agregar-mediciones-al-reporte)).
+- **Replanteo**: la tabla de todos los puntos "Replanteado" del proyecto y sus residuos respecto
+  del objetivo (dN, dE, distancia, corte/relleno).
+
+Se pagina automáticamente. Cada página lleva el nombre del proyecto, el sistema de coordenadas, la
+fecha y, en la primera, la nomenclatura catastral si está cargada.
 
 ## Cálculo (COGO)
 
@@ -229,6 +237,38 @@ curva), lista para guardar y usar en el replanteo.
 Dentro de los resultados de Medición: además del polígono principal (el lote), se puede elegir un
 segundo polígono interior (lo construido) y la app descuenta su área del total, mostrando una
 pequeña **planilla de superficie** con el área bruta, el área descontada y la neta.
+
+### Agregar mediciones al reporte
+
+![Reporte PDF: bloques de medición](img/reporte-bloques.svg)
+
+Cualquier selección que hagas en **Medición** se puede guardar como un **bloque** del reporte PDF,
+sin tener que anotar los datos a mano.
+
+1. En **Cálculo → Medición**, tocá en el mapa 2 o más puntos, en orden (por ejemplo los dos
+   mojones de una medianera, o los vértices de un lote).
+2. Tocá **Agregar al reporte**. Se abre un diálogo donde podés ponerle **nombre** (se sugiere
+   «A → B» o «Bloque N») y una **descripción** opcional. Con 3 o más puntos aparece el interruptor
+   **Polígono cerrado**: si está activo, el bloque suma superficie y perímetro.
+3. Al confirmar, el bloque queda guardado en el proyecto y la selección se limpia, para que
+   elijas los puntos del bloque siguiente y repitas.
+4. **Bloques (N)** abre la lista: ahí se puede **editar** el nombre, la descripción y si es cerrado,
+   o **quitar** un bloque. Los bloques se guardan con el proyecto y no se pierden al cerrar la app.
+5. Generá el PDF desde Puntos → ⋮ → **Reporte (PDF)**.
+
+**Qué se imprime en cada cuadro** (los mismos datos que muestra la pantalla de Medición):
+
+| Bloque | Contenido |
+|---|---|
+| Siempre | Nombre, descripción, lista de puntos en orden y tabla con **Este, Norte y cota** de cada uno. |
+| Tramos | Para cada par de puntos consecutivos: distancia horizontal, desnivel, distancia inclinada, pendiente y **azimut**. Debajo, la distancia acumulada y, con 3+ puntos abiertos, la distancia directa entre el primero y el último y el desnivel total. |
+| 3 o más puntos | **Ángulo horario y deflexión** en cada vértice. |
+| Cerrado | Se agrega el **lado de cierre** a la tabla de tramos, y la **superficie** (m² y ha, fórmula de Gauss), el **perímetro** y el sentido de giro. |
+
+Los bloques guardan *qué puntos* son, no copias de sus coordenadas: si después corregís o
+recalculás un punto, el PDF sale con los datos actuales. Si borrás un punto que estaba en un
+bloque, el bloque lo avisa en el PDF («faltan N puntos») y, si queda con menos de 2, se marca como
+incompleto.
 
 ## Replanteo
 

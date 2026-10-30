@@ -11,6 +11,7 @@ import java.util.Locale
 class TopoRepository(private val db: AppDatabase) {
     private val projects = db.projectDao()
     private val points = db.pointDao()
+    private val blocks = db.reportBlockDao()
 
     fun observeProjects(): Flow<List<ProjectEntity>> = projects.observeAll()
     fun observeProject(id: Long): Flow<ProjectEntity?> = projects.observe(id)
@@ -25,6 +26,11 @@ class TopoRepository(private val db: AppDatabase) {
     suspend fun point(id: Long) = points.get(id)
     suspend fun deletePoint(p: PointEntity) = points.delete(p)
     suspend fun updatePoint(p: PointEntity) = points.update(p)
+
+    fun observeBlocks(projectId: Long): Flow<List<ReportBlockEntity>> = blocks.observeByProject(projectId)
+    suspend fun addBlock(b: ReportBlockEntity): Long = blocks.insert(b)
+    suspend fun updateBlock(b: ReportBlockEntity) = blocks.update(b)
+    suspend fun deleteBlock(b: ReportBlockEntity) = blocks.delete(b)
 
     /** Guarda (o borra, con null) la ruta de la foto georreferenciada de un punto. */
     suspend fun setPhoto(p: PointEntity, path: String?) = points.update(p.copy(photoPath = path))

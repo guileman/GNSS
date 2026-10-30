@@ -86,7 +86,8 @@ import com.topognss.app.importer.parseDxf
 import com.topognss.app.importer.parseKml
 import com.topognss.app.importer.queryDisplayName
 import com.topognss.app.importer.readImportableText
-import com.topognss.app.report.buildStakeoutPdf
+import com.topognss.app.report.buildReportPdf
+import com.topognss.app.ui.activeBlocksFlow
 import com.topognss.app.ui.activePointsFlow
 import com.topognss.app.ui.activeProjectFlow
 import com.topognss.app.ui.components.KeyValue
@@ -107,6 +108,7 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = topo.repository
     val project = hold(activeProjectFlow(), null)
     val points = hold(activePointsFlow(), emptyList())
+    val blocks = hold(activeBlocksFlow(), emptyList())
     val gnss = topo.gnss.state
     var filter by mutableStateOf<PointKind?>(null)
     var message by mutableStateOf<String?>(null)
@@ -280,15 +282,15 @@ class PointsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Reporte PDF de replanteo (puntos "Replanteado" con sus residuos). */
-    fun exportStakeoutPdf(): Intent? {
+    /** Reporte PDF: bloques de medición agregados desde Cálculo + puntos "Replanteado" con sus residuos. */
+    fun exportReportPdf(): Intent? {
         val proj = project.value ?: return null
-        val file = buildStakeoutPdf(topo, proj, points.value)
+        val file = buildReportPdf(topo, proj, points.value, blocks.value)
         val uri = FileProvider.getUriForFile(topo, "${topo.packageName}.fileprovider", file)
         return Intent(Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "Reporte de replanteo ${proj.name}")
+            putExtra(Intent.EXTRA_SUBJECT, "Reporte ${proj.name}")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
@@ -353,10 +355,10 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, onBack: () -> 
                             onClick = { menuOpen = false; showGcp = true },
                         )
                         DropdownMenuItem(
-                            text = { Text("Reporte de replanteo (PDF)") },
+                            text = { Text("Reporte (PDF)") },
                             onClick = {
                                 menuOpen = false
-                                vm.exportStakeoutPdf()?.let { context.startActivity(Intent.createChooser(it, "Reporte de replanteo")) }
+                                vm.exportReportPdf()?.let { context.startActivity(Intent.createChooser(it, "Reporte")) }
                             },
                         )
                     }
