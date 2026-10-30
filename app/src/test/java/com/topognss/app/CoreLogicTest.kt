@@ -2,6 +2,7 @@ package com.topognss.app
 
 import com.topognss.app.cogo.Cogo
 import com.topognss.app.cogo.P3
+import com.topognss.app.cogo.dmsToDecimal
 import com.topognss.app.geo.CrsType
 import com.topognss.app.geo.LocalGeodesy
 import com.topognss.app.geo.ProjectCrs
@@ -229,5 +230,27 @@ class CoreLogicTest {
         assertTrue(!Versions.isNewer("v1.0.44", "1.0.44"))
         assertTrue(!Versions.isNewer("v1.0.39", "1.0.44"))
         assertTrue(!Versions.isNewer("prueba-conexion-bt-wifi", "1.0.44")) // tags que no son versión se ignoran
+    }
+
+    @Test
+    fun stationRadiusWithAngle() {
+        val a = P3(0.0, 0.0, 10.0); val b = P3(0.0, 100.0, 20.0) // línea al Norte
+        // 90° horario desde el Norte = Este: pie en (0,40), +5 al Este
+        val p = Cogo.stationRadius(a, b, 40.0, 5.0, 90.0)
+        assertEquals(5.0, p.e, 1e-9); assertEquals(40.0, p.n, 1e-9); assertEquals(14.0, p.z!!, 1e-9)
+        // 0° = sobre la línea
+        val q = Cogo.stationRadius(a, b, 40.0, 10.0, 0.0)
+        assertEquals(0.0, q.e, 1e-9); assertEquals(50.0, q.n, 1e-9)
+        // -90° = izquierda (Oeste)
+        assertEquals(-5.0, Cogo.stationRadius(a, b, 40.0, 5.0, -90.0).e, 1e-9)
+        // línea al Este, 90° horario = Sur
+        val r = Cogo.stationRadius(P3(0.0, 0.0, null), P3(100.0, 0.0, null), 10.0, 3.0, 90.0)
+        assertEquals(10.0, r.e, 1e-9); assertEquals(-3.0, r.n, 1e-9)
+    }
+
+    @Test
+    fun dmsToDecimalConversion() {
+        assertEquals(30.504166666, dmsToDecimal(30.0, 30.0, 15.0), 1e-8)
+        assertEquals(-30.504166666, dmsToDecimal(-30.0, 30.0, 15.0), 1e-8)
     }
 }

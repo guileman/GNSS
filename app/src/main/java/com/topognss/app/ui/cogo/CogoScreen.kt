@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Adjust
 import androidx.compose.material.icons.filled.ArrowRightAlt
 import androidx.compose.material.icons.filled.CallMerge
+import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.ChangeHistory
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -79,6 +80,7 @@ import com.topognss.app.cogo.P3
 import com.topognss.app.cogo.TraverseLeg
 import com.topognss.app.cogo.adjustTraverse
 import com.topognss.app.cogo.curveStakeout
+import com.topognss.app.cogo.dmsToDecimal
 import com.topognss.app.cogo.formatDms
 import com.topognss.app.cogo.intersectionByAzimuths
 import com.topognss.app.cogo.intersectionByDistances
@@ -109,6 +111,7 @@ enum class CreateMethod(val label: String) {
     MIDPOINT("Punto medio"),
     EXTEND("Prolongación"),
     OFFSET("Estación / desplazamiento"),
+    STATION_ANGLE("Estación + radio (ángulo)"),
     INTERSECTION_AZ("Intersección (azimuts)"),
     INTERSECTION_DIST("Intersección (distancias)"),
 }
@@ -126,6 +129,14 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
     var station by mutableStateOf("")
     var offset by mutableStateOf("")
     var offsetRight by mutableStateOf(true)
+    // Estación + radio con ángulo (la estación reutiliza `station`)
+    var radius by mutableStateOf("")
+    var angleDms by mutableStateOf(false)
+    var angleDec by mutableStateOf("")
+    var angleD by mutableStateOf("")
+    var angleM by mutableStateOf("")
+    var angleS by mutableStateOf("")
+    var angleClockwise by mutableStateOf(true)
     var extrapolateGrade by mutableStateOf(false)
     var closePolygon by mutableStateOf(true)
     var newName by mutableStateOf("")
@@ -290,6 +301,12 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
                 val o = parseNum(offset.ifBlank { "0" }) ?: error("Desplazamiento inválido")
                 Cogo.stationOffset(a, b, s, if (offsetRight) o else -o)
             }
+            CreateMethod.STATION_ANGLE -> {
+                val s = parseNum(station) ?: error("Ingresá la estación (distancia desde A)")
+                val r = parseNum(radius) ?: error("Ingresá el radio")
+                val ang = angleValue() ?: error("Ingresá el ángulo")
+                Cogo.stationRadius(a, b, s, r, if (angleClockwise) ang else -ang)
+            }
             CreateMethod.INTERSECTION_AZ -> {
                 val az1 = parseNum(azimuthFromA) ?: error("Ingresá el azimut observado desde $a")
                 val az2 = parseNum(azimuthFromB) ?: error("Ingresá el azimut observado desde $b")
@@ -303,6 +320,16 @@ class CogoViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    /** Ángulo ingresado en grados decimales (modo decimal o G° M' S"); null si falta o es inválido. */
+    fun angleValue(): Double? =
+        if (!angleDms) parseNum(angleDec)
+        else {
+            val d = parseNum(angleD.ifBlank { "0" }); val m = parseNum(angleM.ifBlank { "0" }); val s = parseNum(angleS.ifBlank { "0" })
+            if (d == null || m == null || s == null || (angleD.isBlank() && angleM.isBlank() && angleS.isBlank())) null
+            else if (m < 0 || m >= 60 || s < 0 || s >= 60) null
+            else dmsToDecimal(d, m, s)
+        }
 
     fun create(sel: List<PointEntity>) = viewModelScope.launch {
         val proj = project.value ?: return@launch
@@ -338,6 +365,11 @@ private fun sketchFor(tab: Int, sel: List<PointEntity>, vm: CogoViewModel): Cogo
                 CreateMethod.EXTEND -> listOf(listOf(b, p))
                 CreateMethod.OFFSET -> {
                     // Pie de la perpendicular sobre A→B a la distancia "estación": A → pie → punto
+                    val foot = Cogo.stationOffset(a, b, parseNum(vm.station) ?: 0.0, 0.0)
+                    listOf(listOf(a, foot), listOf(foot, p))
+                }
+                CreateMethod.STATION_ANGLE -> {
+                    // A → pie sobre la línea → punto (radio con el ángulo)
                     val foot = Cogo.stationOffset(a, b, parseNum(vm.station) ?: 0.0, 0.0)
                     listOf(listOf(a, foot), listOf(foot, p))
                 }
@@ -383,6 +415,7 @@ private fun CreateMethod.icon(): ImageVector = when (this) {
     CreateMethod.MIDPOINT -> Icons.Filled.LinearScale
     CreateMethod.EXTEND -> Icons.Filled.ArrowRightAlt
     CreateMethod.OFFSET -> Icons.Filled.SubdirectoryArrowRight
+    CreateMethod.STATION_ANGLE -> Icons.Filled.CallSplit
     CreateMethod.INTERSECTION_AZ -> Icons.Filled.CallMerge
     CreateMethod.INTERSECTION_DIST -> Icons.Filled.Adjust
 }
@@ -647,6 +680,33 @@ private fun CreatePanel(sel: List<PointEntity>, vm: CogoViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(selected = !vm.offsetRight, onClick = { vm.offsetRight = false }, label = { Text("◀ Izquierda", maxLines = 1) })
                 FilterChip(selected = vm.offsetRight, onClick = { vm.offsetRight = true }, label = { Text("Derecha ▶", maxLines = 1) })
+            }
+        }
+        CreateMethod.STATION_ANGLE -> {
+            Text(
+                "La dirección es $a→$b. Se avanza la estación desde $a sobre esa línea y, desde ese punto, " +
+                    "se mide el ángulo a partir de la dirección $a→$b (0° = sobre la línea, 90° = perpendicular) y se avanza el radio.",
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NumberField(vm.station, { vm.station = it }, "Estación", Modifier.weight(1f), "m")
+                NumberField(vm.radius, { vm.radius = it }, "Radio", Modifier.weight(1f), "m")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = !vm.angleDms, onClick = { vm.angleDms = false }, label = { Text("Decimal", maxLines = 1) })
+                FilterChip(selected = vm.angleDms, onClick = { vm.angleDms = true }, label = { Text("G° M' S\"", maxLines = 1) })
+            }
+            if (!vm.angleDms) {
+                NumberField(vm.angleDec, { vm.angleDec = it }, "Ángulo", Modifier.fillMaxWidth(), "°")
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(vm.angleD, { vm.angleD = it }, "Grados", Modifier.weight(1f), "°")
+                    NumberField(vm.angleM, { vm.angleM = it }, "Min", Modifier.weight(1f), "'")
+                    NumberField(vm.angleS, { vm.angleS = it }, "Seg", Modifier.weight(1f), "\"")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = !vm.angleClockwise, onClick = { vm.angleClockwise = false }, label = { Text("◀ Izquierda", maxLines = 1) })
+                FilterChip(selected = vm.angleClockwise, onClick = { vm.angleClockwise = true }, label = { Text("Derecha ▶", maxLines = 1) })
             }
         }
         CreateMethod.INTERSECTION_AZ -> {

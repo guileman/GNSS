@@ -135,6 +135,17 @@ object Cogo {
         return P3(a.e + ue * station + re * offset, a.n + un * station + rn * offset, z)
     }
 
+    /**
+     * Estación + radio con ángulo: el pie F está a [station] desde A sobre la dirección A→B; desde F se mide
+     * el [angleDeg] a partir de la dirección A→B (positivo = horario, hacia la derecha; 0° = sobre la línea,
+     * 90° = perpendicular derecha) y se avanza [radius]. La cota es la interpolada en F.
+     */
+    fun stationRadius(a: P3, b: P3, station: Double, radius: Double, angleDeg: Double): P3 {
+        val foot = stationOffset(a, b, station, 0.0)
+        val az = Math.toDegrees(atan2(b.e - a.e, b.n - a.n)) + angleDeg
+        return polar(foot, az, radius)
+    }
+
     /** Inverso: estación/desplazamiento de un punto P respecto de la línea A→B. */
     fun inverseStationOffset(a: P3, b: P3, p: P3): Pair<Double, Double> {
         val l = horizontalDistance(a, b)
@@ -163,4 +174,10 @@ fun formatDms(deg: Double, decimals: Int = 1): String {
     if (s >= 60.0) { s -= 60.0; m += 1 }
     if (m >= 60) { m -= 60; d += 1 }
     return "%s%d°%02d'%0${3 + decimals}.${decimals}f\"".format(java.util.Locale.US, sign, d, m, s)
+}
+
+/** Ángulo en grados decimales a partir de grados, minutos y segundos (el signo va en los grados). */
+fun dmsToDecimal(deg: Double, min: Double, sec: Double): Double {
+    val sign = if (deg < 0 || (deg == 0.0 && 1 / deg < 0)) -1.0 else 1.0
+    return sign * (abs(deg) + min / 60.0 + sec / 3600.0)
 }
