@@ -150,7 +150,23 @@ desplazamiento a la izquierda sería E 95. Es la forma típica de replantear una
 o un retiro desde la línea municipal: A y B son dos mojones de la medianera, la estación es la
 distancia desde el primero y el desplazamiento es el retiro.
 
-**4 · Intersección (azimutes).** Para un punto al que no se puede llegar o medir directo: se
+**4 · Estación + radio (ángulo).** Parecida a la anterior, pero en vez de desplazarse en perpendicular
+se mide un **ángulo y un radio** desde el punto de la estación:
+
+- Los puntos A y B definen la **dirección** (A→B).
+- **Estación**: distancia desde A, a lo largo de esa dirección. Ahí queda el *pie*, que es el centro del radio.
+- **Ángulo**: se mide desde el pie, a partir de la dirección A→B (0° = sobre la línea, 90° = perpendicular).
+  Se puede cargar en **grados decimales** o en **grados, minutos y segundos** (botones *Decimal* / *G° M' S"*).
+- **Radio**: distancia desde el pie en la dirección del ángulo.
+- Los botones *◀ Izquierda* / *Derecha ▶* indican hacia qué lado de la línea se mide el ángulo
+  (derecha = sentido horario). Si es izquierda, el ángulo se toma en sentido antihorario.
+- La cota es la interpolada entre A y B en el pie. En el mapa se dibujan dos líneas punteadas:
+  de A al pie y del pie al punto.
+
+*Ejemplo.* A = (E 0, N 0) y B = (E 0, N 100). Estación 40, ángulo 90° a la derecha y radio 5 dan
+**E 5, N 40**. Con ángulo 30°, el radio se abre 30° hacia el este desde la línea.
+
+**5 · Intersección (azimutes).** Para un punto al que no se puede llegar o medir directo: se
 observa su dirección desde A y desde B, y la app calcula dónde se cruzan las dos visuales. Se
 ingresa el **azimut** desde A y el azimut desde B, en grados decimales (contado desde el norte en
 sentido horario). Si las visuales son paralelas avisa que no se cruzan. La cota es el promedio de A
@@ -158,7 +174,7 @@ y B.
 
 *Ejemplo.* A = (0, 0), B = (100, 0), azimut desde A 45° y desde B 315° dan **E 50, N 50**.
 
-**5 · Intersección (distancias).** El punto está a una distancia conocida de A y otra de B
+**6 · Intersección (distancias).** El punto está a una distancia conocida de A y otra de B
 (medidas con cinta o con distanciómetro). Hay **dos soluciones**, una a cada lado de la línea A-B;
 con los botones *Izquierda / Derecha* (mirando de A a B) se elige cuál. Si las dos distancias no
 alcanzan a «cerrar» sobre la base A-B (son muy cortas o muy largas), avisa que son incompatibles.
