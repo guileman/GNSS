@@ -302,6 +302,9 @@ fun PointsScreen(onOpenProjects: () -> Unit, onStake: () -> Unit, onBack: () -> 
     val context = LocalContext.current
     val project by vm.project.collectAsState()
     val all by vm.points.collectAsState()
+    // Los bloques del reporte se observan acá aunque no se dibujen: `hold` (WhileSubscribed) sólo mantiene el
+    // valor al día mientras alguien lo recoge; sin esto, el PDF se generaba siempre con la lista vacía.
+    val blocks by vm.blocks.collectAsState()
     var detail by remember { mutableStateOf<PointEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
