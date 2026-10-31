@@ -3,7 +3,9 @@ package com.topognss.app.report
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.pdf.PdfDocument
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.PointKind
@@ -172,6 +174,61 @@ fun buildReportPdf(
         y += 4f
     }
 
+    /**
+     * Croquis del bloque (equivalente al mapa de Medición): puntos numerados, líneas de unión con su
+     * distancia, cierre punteado y relleno si es polígono, flecha Norte y barra de escala.
+     */
+    fun drawPlan(pts: List<PointEntity>, closed: Boolean) {
+        val h = 200f
+        ensure(h + 8f)
+        val x0 = margin; val y0 = y
+        val frame = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 0.75f; color = Color.rgb(160, 160, 160) }
+        canvas.drawRect(x0, y0, x0 + contentWidth, y0 + h, frame)
+        val lay = layoutPlan(pts, contentWidth, h, 34f)
+        val xy = lay.points.map { (it.x + x0) to (it.y + y0) }
+        val lineP = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 1.5f; color = Color.rgb(25, 118, 210); isAntiAlias = true }
+        val dashP = Paint(lineP).apply { pathEffect = DashPathEffect(floatArrayOf(5f, 4f), 0f) }
+        if (closed && xy.size >= 3) {
+            val path = Path().apply {
+                moveTo(xy[0].first, xy[0].second)
+                for (i in 1 until xy.size) lineTo(xy[i].first, xy[i].second)
+                close()
+            }
+            canvas.drawPath(path, Paint().apply { style = Paint.Style.FILL; color = Color.argb(40, 25, 118, 210) })
+        }
+        val distP = Paint().apply { textSize = 7.5f; color = Color.rgb(25, 118, 210); textAlign = Paint.Align.CENTER; isAntiAlias = true }
+        val n = xy.size
+        val segs = if (closed && n >= 3) n else n - 1
+        for (i in 0 until segs) {
+            val j = (i + 1) % n
+            val (ax, ay) = xy[i]; val (bx, by) = xy[j]
+            canvas.drawLine(ax, ay, bx, by, if (closed && i == n - 1) dashP else lineP)
+            val d = Math.hypot(pts[j].easting - pts[i].easting, pts[j].northing - pts[i].northing)
+            canvas.drawText("%.2f".format(Locale.US, d), (ax + bx) / 2, (ay + by) / 2 - 2.5f, distP)
+        }
+        val dot = Paint().apply { style = Paint.Style.FILL; color = Color.rgb(211, 47, 47); isAntiAlias = true }
+        val lbl = Paint().apply { textSize = 8.5f; isFakeBoldText = true; color = Color.BLACK; isAntiAlias = true }
+        xy.forEachIndexed { i, (px, py) ->
+            canvas.drawCircle(px, py, 3f, dot)
+            canvas.drawText(fit(pts[i].name, lbl, 70f), px + 5f, py - 4f, lbl)
+        }
+        // Flecha Norte (arriba a la derecha)
+        val nx = x0 + contentWidth - 18f; val ny = y0 + 12f
+        val black = Paint().apply { style = Paint.Style.FILL; color = Color.BLACK; isAntiAlias = true }
+        canvas.drawPath(Path().apply { moveTo(nx, ny); lineTo(nx - 4f, ny + 14f); lineTo(nx, ny + 10f); lineTo(nx + 4f, ny + 14f); close() }, black)
+        canvas.drawText("N", nx - 3f, ny - 2f, lbl)
+        // Barra de escala (abajo a la izquierda), hasta ~1/4 del ancho
+        val len = niceScaleLength(contentWidth / 4.0 / lay.scale)
+        val barPts = (len * lay.scale).toFloat()
+        val sx = x0 + 8f; val sy = y0 + h - 10f
+        val barP = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 1.5f; color = Color.BLACK }
+        canvas.drawLine(sx, sy, sx + barPts, sy, barP)
+        canvas.drawLine(sx, sy - 3f, sx, sy + 3f, barP)
+        canvas.drawLine(sx + barPts, sy - 3f, sx + barPts, sy + 3f, barP)
+        canvas.drawText(if (len >= 1) "%.0f m".format(Locale.US, len) else "%.2f m".format(Locale.US, len), sx, sy - 5f, cellPaint)
+        y = y0 + h + 8f
+    }
+
     fun fmt(v: Double?, d: Int = 3) = v?.let { "%.${d}f".format(Locale.US, it) } ?: "—"
 
     newPage()
@@ -204,6 +261,7 @@ fun buildReportPdf(
                 subPaint,
             )
             y += 4f
+            drawPlan(pts, sum.closed)
 
             table(
                 listOf("Punto", "Este (m)", "Norte (m)", "Cota (m)"),
