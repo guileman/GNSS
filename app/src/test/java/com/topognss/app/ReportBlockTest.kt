@@ -3,6 +3,8 @@ package com.topognss.app
 import com.topognss.app.data.PointEntity
 import com.topognss.app.data.ReportBlockEntity
 import com.topognss.app.data.idList
+import com.topognss.app.report.layoutPlan
+import com.topognss.app.report.niceScaleLength
 import com.topognss.app.report.resolveBlockPoints
 import com.topognss.app.report.summarizeBlock
 import org.junit.Assert.assertEquals
@@ -70,5 +72,29 @@ class ReportBlockTest {
         assertEquals(listOf(2L, 9L, 1L), block.idList())
         assertEquals(listOf("B", "A"), resolveBlockPoints(block, all).map { it.name })
         assertNotNull(block)
+    }
+
+    @Test fun planKeepsNorthUpAndEastRight() {
+        // Línea al Norte de 100 m en un recuadro de 200×100 con margen 10: escala 0.8, centrada
+        val lay = layoutPlan(listOf(pt(1, "A", 0.0, 0.0), pt(2, "B", 0.0, 100.0)), 200f, 100f, 10f)
+        assertEquals(0.8f, lay.scale, 1e-6f)
+        assertEquals(100f, lay.points[0].x, 1e-4f); assertEquals(90f, lay.points[0].y, 1e-4f)
+        assertEquals(100f, lay.points[1].x, 1e-4f); assertEquals(10f, lay.points[1].y, 1e-4f)
+        // Este hacia la derecha
+        val e = layoutPlan(listOf(pt(1, "A", 0.0, 0.0), pt(2, "B", 50.0, 0.0)), 200f, 100f, 10f)
+        assertTrue(e.points[1].x > e.points[0].x)
+    }
+
+    @Test fun planWithCoincidentPointsDoesNotBreak() {
+        val lay = layoutPlan(listOf(pt(1, "A", 5.0, 5.0), pt(2, "B", 5.0, 5.0)), 200f, 100f, 10f)
+        assertEquals(1f, lay.scale, 1e-6f)
+        assertEquals(100f, lay.points[0].x, 1e-4f); assertEquals(50f, lay.points[0].y, 1e-4f)
+    }
+
+    @Test fun niceScaleLengthRoundsDown() {
+        assertEquals(5.0, niceScaleLength(7.3), 1e-9)
+        assertEquals(20.0, niceScaleLength(30.0), 1e-9)
+        assertEquals(100.0, niceScaleLength(100.0), 1e-9)
+        assertEquals(0.2, niceScaleLength(0.3), 1e-9)
     }
 }

@@ -85,3 +85,49 @@ fun resolveBlockPoints(block: ReportBlockEntity, all: List<PointEntity>): List<P
     val byId = all.associateBy { it.id }
     return block.idList().mapNotNull { byId[it] }
 }
+
+/** Un punto del croquis ya en coordenadas de página (origen arriba a la izquierda, Y hacia abajo). */
+data class PlanPoint(val name: String, val x: Float, val y: Float)
+
+/** Croquis de un bloque: puntos escalados para caber en un recuadro, con la escala usada (puntos de página por metro). */
+data class PlanLayout(val points: List<PlanPoint>, val scale: Float)
+
+/**
+ * Ubica los puntos de un bloque dentro de un recuadro [width]×[height] (con margen [pad]) conservando la
+ * proporción: el Norte queda hacia arriba y el Este hacia la derecha, como en el mapa de Medición.
+ * Si todos los puntos coinciden, quedan centrados con escala 1.
+ */
+fun layoutPlan(points: List<PointEntity>, width: Float, height: Float, pad: Float): PlanLayout {
+    require(points.isNotEmpty()) { "Sin puntos" }
+    val minE = points.minOf { it.easting }; val maxE = points.maxOf { it.easting }
+    val minN = points.minOf { it.northing }; val maxN = points.maxOf { it.northing }
+    val spanE = maxE - minE; val spanN = maxN - minN
+    val availW = (width - 2 * pad).toDouble(); val availH = (height - 2 * pad).toDouble()
+    val k = when {
+        spanE < 1e-9 && spanN < 1e-9 -> 1.0
+        spanE < 1e-9 -> availH / spanN
+        spanN < 1e-9 -> availW / spanE
+        else -> minOf(availW / spanE, availH / spanN)
+    }
+    // Centrar el dibujo en el recuadro
+    val offX = pad + (availW - spanE * k) / 2
+    val offY = pad + (availH - spanN * k) / 2
+    return PlanLayout(
+        points = points.map {
+            PlanPoint(it.name, (offX + (it.easting - minE) * k).toFloat(), (offY + (maxN - it.northing) * k).toFloat())
+        },
+        scale = k.toFloat(),
+    )
+}
+
+/** Largo "redondo" (1, 2 o 5 × 10^n) que no supera [maxMeters], para dibujar la barra de escala. */
+fun niceScaleLength(maxMeters: Double): Double {
+    if (maxMeters <= 0.0 || maxMeters.isNaN() || maxMeters.isInfinite()) return 1.0
+    val exp = Math.floor(Math.log10(maxMeters))
+    val base = Math.pow(10.0, exp)
+    return when {
+        maxMeters >= 5 * base -> 5 * base
+        maxMeters >= 2 * base -> 2 * base
+        else -> base
+    }
+}
